@@ -1,0 +1,30 @@
+{
+  "package": "@shapeshift-labs/frontier-scheduler",
+  "generatedAt": "2026-05-28T13:32:38.842Z",
+  "rows": [
+    {
+      "name": "schedule-run-1k",
+      "iterations": 80,
+      "meanMs": 2.61141305,
+      "medianMs": 2.0079159999999945,
+      "p95Ms": 6.41904199999999,
+      "opsPerSec": 382.9344423319015
+    },
+    {
+      "name": "serialize-restore-1k",
+      "iterations": 80,
+      "meanMs": 3.6776756000000055,
+      "medianMs": 2.668375000000026,
+      "p95Ms": 7.98620799999992,
+      "opsPerSec": 271.91087762063586
+    },
+    {
+      "name": "inspect-graph-1k",
+      "iterations": 80,
+      "meanMs": 1.9861609750000013,
+      "medianMs": 1.4189589999999725,
+      "p95Ms": 5.26520800000003,
+      "opsPerSec": 503.48386288276527
+    }
+  ]
+}

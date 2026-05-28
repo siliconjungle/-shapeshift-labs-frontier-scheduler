@@ -126,6 +126,49 @@ import {
 }
 
 {
+  const recordCallbacks = [];
+  const errors = [];
+  const scheduler = createScheduler({
+    onRecord(record) {
+      record.metadata = { touched: true };
+      record.dependsOn.push('callback-mutation');
+      recordCallbacks.push(record);
+    },
+    onError(error, record) {
+      record.metadata = { touched: true };
+      record.dependsOn.push('error-mutation');
+      errors.push({ error, record });
+    }
+  });
+  const input = { nested: { count: 1 } };
+  scheduler.schedule({
+    id: 'ok',
+    input,
+    metadata: { source: 'test' },
+    run(ctx) {
+      assert.deepStrictEqual(ctx.input, { nested: { count: 1 } });
+    }
+  });
+  input.nested.count = 2;
+  scheduler.schedule({
+    id: 'fail',
+    metadata: { source: 'test' },
+    run() {
+      throw new Error('expected');
+    }
+  });
+  scheduler.run();
+
+  assert.strictEqual(recordCallbacks.length, 2);
+  assert.strictEqual(errors.length, 1);
+  const history = scheduler.history();
+  assert.strictEqual(history[0].metadata.source, 'test');
+  assert.deepStrictEqual(history[0].dependsOn, []);
+  assert.strictEqual(history[1].metadata.source, 'test');
+  assert.deepStrictEqual(history[1].dependsOn, []);
+}
+
+{
   const scheduler = createScheduler({ framePolicy: 'microtask', autoRun: true });
   let ran = false;
   scheduler.schedule({ id: 'auto', run() { ran = true; } });

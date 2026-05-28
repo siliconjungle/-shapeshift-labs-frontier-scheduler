@@ -123,3 +123,11 @@ Run package-local measurements:
 ```sh
 npm run bench
 ```
+
+Latest local package benchmark on Node v26.1.0, darwin arm64, 80 iterations:
+
+| Fixture | Mean | Median | p95 |
+| --- | ---: | ---: | ---: |
+| `schedule-run-1k` | 2.61 ms | 2.01 ms | 6.42 ms |
+| `serialize-restore-1k` | 3.68 ms | 2.67 ms | 7.99 ms |
+| `inspect-graph-1k` | 1.99 ms | 1.42 ms | 5.27 ms |

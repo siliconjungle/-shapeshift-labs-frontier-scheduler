@@ -361,7 +361,7 @@ class Scheduler implements FrontierScheduler {
         task.status = 'failed';
         failed++;
         const record = this.recordTask(task, 'failed', startedAt, undefined, error);
-        this.options.onError?.(error, record);
+        this.options.onError?.(error, cloneRecord(record));
       }
       usedUnits += task.units;
       usedUnitsByLane.set(task.lane, (usedUnitsByLane.get(task.lane) ?? 0) + task.units);
@@ -845,10 +845,9 @@ class Scheduler implements FrontierScheduler {
   }
 
   private pushRecord(record: FrontierSchedulerRecord): void {
-    const cloned = cloneRecord(record);
-    this.records[this.records.length] = cloned;
+    this.records[this.records.length] = record;
     if (this.records.length > this.maxHistory) this.records.splice(0, this.records.length - this.maxHistory);
-    this.options.onRecord?.(cloneRecord(cloned));
+    this.options.onRecord?.(cloneRecord(record));
   }
 
   private nextRecordIdValue(): string {
@@ -969,14 +968,50 @@ function cloneMetadata(value: Record<string, unknown> | undefined): Record<strin
     : undefined;
 }
 
+const CLONE_SERIALIZABLE_FALLBACK = Symbol('cloneSerializableFallback');
+
 function cloneSerializable<T>(value: T): T | undefined {
   if (value === undefined) return undefined;
+  const fast = clonePlainSerializable(value, 0);
+  if (fast !== CLONE_SERIALIZABLE_FALLBACK) return fast as T;
   if (value === null || typeof value !== 'object') return value;
   try {
     return JSON.parse(JSON.stringify(value)) as T;
   } catch {
     return undefined;
   }
+}
+
+function clonePlainSerializable(value: unknown, depth: number): unknown {
+  if (value === null) return null;
+  const type = typeof value;
+  if (type === 'string' || type === 'boolean') return value;
+  if (type === 'number') return Number.isFinite(value) ? value : CLONE_SERIALIZABLE_FALLBACK;
+  if (type !== 'object' || depth > 64) return CLONE_SERIALIZABLE_FALLBACK;
+  if (Array.isArray(value)) {
+    const array = value as unknown[];
+    const out = new Array(array.length);
+    for (let i = 0, length = array.length; i < length; i++) {
+      const child = clonePlainSerializable(array[i], depth + 1);
+      if (child === CLONE_SERIALIZABLE_FALLBACK) return CLONE_SERIALIZABLE_FALLBACK;
+      out[i] = child;
+    }
+    return out;
+  }
+  const proto = Object.getPrototypeOf(value);
+  if ((proto !== Object.prototype && proto !== null) || typeof (value as { toJSON?: unknown }).toJSON === 'function') {
+    return CLONE_SERIALIZABLE_FALLBACK;
+  }
+  const source = value as Record<string, unknown>;
+  const keys = Object.keys(source);
+  const out: Record<string, unknown> = {};
+  for (let i = 0, length = keys.length; i < length; i++) {
+    const key = keys[i];
+    const child = clonePlainSerializable(source[key], depth + 1);
+    if (child === CLONE_SERIALIZABLE_FALLBACK) return CLONE_SERIALIZABLE_FALLBACK;
+    out[key] = child;
+  }
+  return out;
 }
 
 function cloneRecord(record: FrontierSchedulerRecord): FrontierSchedulerRecord {
