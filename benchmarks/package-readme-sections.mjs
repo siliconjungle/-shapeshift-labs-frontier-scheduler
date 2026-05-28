@@ -21,6 +21,7 @@ const packages = [
   pkg('frontier-logging', '@shapeshift-labs/frontier-logging', 'Opt-in structured logging, browser telemetry, file sinks, exporters, benchmark traces, and Frontier patch/update summaries.'),
   pkg('frontier-mutation', '@shapeshift-labs/frontier-mutation', 'Explicit mutation and selector plans compiled to Frontier patches or CRDT operations.'),
   pkg('frontier-virtual', '@shapeshift-labs/frontier-virtual', 'DOM-neutral virtualization, layout providers, range materialization, grids, spatial culling, frustum culling, and serializable layout state.'),
+  pkg('frontier-scene', '@shapeshift-labs/frontier-scene', 'Patch-native 2D/3D scene graph, transform propagation, bounds queries, and virtual/culling adapters.'),
   pkg('frontier-dom', '@shapeshift-labs/frontier-dom', 'Patch-native DOM and host renderer bindings, manifest hydration, JSX runtime/compiler helpers, SSR, devtools, and logging bridges.'),
   pkg('frontier-crdt', '@shapeshift-labs/frontier-crdt', 'Native CRDT documents, update tooling, awareness, branches, conflict introspection, version frames, and undo.'),
   pkg('frontier-crdt-sync', '@shapeshift-labs/frontier-crdt-sync', 'CRDT sync endpoints, repo/storage/provider contracts, document URLs, local networks, model checking, forensics, and text binding contracts.'),
