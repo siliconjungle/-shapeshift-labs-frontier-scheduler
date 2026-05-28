@@ -271,6 +271,8 @@ class Scheduler implements FrontierScheduler {
   private readonly options: FrontierSchedulerOptions;
   private readonly lanes = new Map<string, InternalLane>();
   private readonly queues = new Map<string, InternalTask[]>();
+  private readonly pendingTasksById = new Map<string, InternalTask>();
+  private readonly queuedTasksByKey = new Map<string, Map<string, InternalTask[]>>();
   private readonly records: FrontierSchedulerRecord[] = [];
   private readonly completedTaskIds = new Set<string>();
   private readonly maxHistory: number;
@@ -296,15 +298,17 @@ class Scheduler implements FrontierScheduler {
     const laneId = normalizeId(task.lane ?? task.area ?? this.options.defaultLane ?? 'default', 'lane id');
     const lane = this.ensureLane({ id: laneId });
     const queue = this.queueFor(lane.id);
-    const existingByKey = task.key === undefined ? undefined : queue.find((item) => item.key === task.key);
+    const key = task.key === undefined ? undefined : String(task.key);
+    const existingByKey = key === undefined || (lane.backpressure !== 'coalesce-key' && lane.backpressure !== 'replace-key')
+      ? undefined
+      : this.firstQueuedTaskByKey(lane.id, key);
     if (existingByKey !== undefined && lane.backpressure === 'coalesce-key') {
       this.recordDropped(task, lane, 'coalesced');
       return existingByKey.view as FrontierScheduledTask<TInput>;
     }
     if (existingByKey !== undefined && lane.backpressure === 'replace-key') {
       this.dropTask(existingByKey, 'dropped', 'replaced');
-      removeTask(queue, existingByKey.id);
-      this.pending--;
+      this.removeQueuedTask(existingByKey);
     } else if (queue.length >= lane.maxQueued) {
       this.applyBackpressure(task, lane, queue);
     }
@@ -395,22 +399,21 @@ class Scheduler implements FrontierScheduler {
 
   cancel(taskId: string, reason = 'cancelled'): boolean {
     const id = normalizeId(taskId, 'task id');
-    for (const queue of this.queues.values()) {
-      const index = queue.findIndex((task) => task.id === id);
-      if (index < 0) continue;
-      const task = queue[index];
-      queue.splice(index, 1);
-      this.pending--;
-      this.dropTask(task, 'cancelled', reason);
-      return true;
-    }
-    return false;
+    const task = this.pendingTasksById.get(id);
+    if (task === undefined) return false;
+    this.removeQueuedTask(task);
+    this.dropTask(task, 'cancelled', reason);
+    return true;
   }
 
   cancelLane(laneId: string, reason = 'lane-cancelled'): number {
     const queue = this.queueFor(normalizeId(laneId, 'lane id'));
     const count = queue.length;
-    while (queue.length !== 0) this.dropTask(queue.shift() as InternalTask, 'cancelled', reason);
+    for (const task of queue) {
+      this.untrackQueuedTask(task);
+      this.dropTask(task, 'cancelled', reason);
+    }
+    queue.length = 0;
     this.pending -= count;
     return count;
   }
@@ -419,14 +422,22 @@ class Scheduler implements FrontierScheduler {
     if (laneId !== undefined) {
       const queue = this.queueFor(normalizeId(laneId, 'lane id'));
       const count = queue.length;
-      while (queue.length !== 0) this.dropTask(queue.shift() as InternalTask, 'dropped', 'cleared');
+      for (const task of queue) {
+        this.untrackQueuedTask(task);
+        this.dropTask(task, 'dropped', 'cleared');
+      }
+      queue.length = 0;
       this.pending -= count;
       return count;
     }
     let count = 0;
     for (const queue of this.queues.values()) {
       count += queue.length;
-      while (queue.length !== 0) this.dropTask(queue.shift() as InternalTask, 'dropped', 'cleared');
+      for (const task of queue) {
+        this.untrackQueuedTask(task);
+        this.dropTask(task, 'dropped', 'cleared');
+      }
+      queue.length = 0;
     }
     this.pending = 0;
     return count;
@@ -573,8 +584,9 @@ class Scheduler implements FrontierScheduler {
   }
 
   private enqueueTask<TInput>(task: InternalTask<TInput>): void {
-    if (this.hasPendingTask(task.id)) throw new TypeError('scheduler task id is already queued: ' + task.id);
+    if (this.pendingTasksById.has(task.id)) throw new TypeError('scheduler task id is already queued: ' + task.id);
     insertTask(this.queueFor(task.lane), task as InternalTask);
+    this.trackQueuedTask(task as InternalTask);
     this.pending++;
   }
 
@@ -591,8 +603,7 @@ class Scheduler implements FrontierScheduler {
       case 'cancel-old': {
         const oldest = oldestTask(queue);
         if (oldest !== undefined) {
-          removeTask(queue, oldest.id);
-          this.pending--;
+          this.removeQueuedTask(oldest);
           this.dropTask(oldest, lane.backpressure === 'cancel-old' ? 'cancelled' : 'dropped', 'backpressure');
         }
         return;
@@ -612,22 +623,30 @@ class Scheduler implements FrontierScheduler {
   ): InternalTask | null {
     let best: InternalTask | null = null;
     let bestLane: InternalLane | undefined;
+    let bestQueue: InternalTask[] | undefined;
+    let bestIndex = -1;
     for (const lane of this.lanes.values()) {
       if (laneFilter !== undefined && lane.id !== laneFilter) continue;
       const queue = this.queueFor(lane.id);
-      const task = queue.find((item) => this.canRunTask(item, lane, remainingUnits, usedUnitsByLane, elapsedMs));
-      if (task === undefined) continue;
-      if (
-        best === null ||
-        lane.priority > (bestLane as InternalLane).priority ||
-        lane.priority === (bestLane as InternalLane).priority && compareTaskOrder(task, best) < 0
-      ) {
-        best = task;
-        bestLane = lane;
+      for (let index = 0; index < queue.length; index++) {
+        const task = queue[index];
+        if (!this.canRunTask(task, lane, remainingUnits, usedUnitsByLane, elapsedMs)) continue;
+        if (
+          best === null ||
+          lane.priority > (bestLane as InternalLane).priority ||
+          lane.priority === (bestLane as InternalLane).priority && compareTaskOrder(task, best) < 0
+        ) {
+          best = task;
+          bestLane = lane;
+          bestQueue = queue;
+          bestIndex = index;
+        }
+        break;
       }
     }
     if (best === null) return null;
-    removeTask(this.queueFor(best.lane), best.id);
+    (bestQueue as InternalTask[]).splice(bestIndex, 1);
+    this.untrackQueuedTask(best);
     this.pending--;
     return best;
   }
@@ -717,6 +736,51 @@ class Scheduler implements FrontierScheduler {
     return queue;
   }
 
+  private trackQueuedTask(task: InternalTask): void {
+    this.pendingTasksById.set(task.id, task);
+    if (task.key === undefined) return;
+    let keyedByLane = this.queuedTasksByKey.get(task.lane);
+    if (keyedByLane === undefined) {
+      keyedByLane = new Map();
+      this.queuedTasksByKey.set(task.lane, keyedByLane);
+    }
+    let keyedTasks = keyedByLane.get(task.key);
+    if (keyedTasks === undefined) {
+      keyedTasks = [];
+      keyedByLane.set(task.key, keyedTasks);
+    }
+    keyedTasks[keyedTasks.length] = task;
+  }
+
+  private untrackQueuedTask(task: InternalTask): void {
+    this.pendingTasksById.delete(task.id);
+    if (task.key === undefined) return;
+    const keyedByLane = this.queuedTasksByKey.get(task.lane);
+    const keyedTasks = keyedByLane?.get(task.key);
+    if (keyedTasks === undefined) return;
+    const index = keyedTasks.indexOf(task);
+    if (index >= 0) keyedTasks.splice(index, 1);
+    if (keyedTasks.length === 0) {
+      keyedByLane?.delete(task.key);
+      if (keyedByLane?.size === 0) this.queuedTasksByKey.delete(task.lane);
+    }
+  }
+
+  private firstQueuedTaskByKey(laneId: string, key: string): InternalTask | undefined {
+    return this.queuedTasksByKey.get(laneId)?.get(key)?.[0];
+  }
+
+  private removeQueuedTask(task: InternalTask): boolean {
+    const queue = this.queues.get(task.lane);
+    if (queue === undefined) return false;
+    const index = queue.indexOf(task);
+    if (index < 0) return false;
+    queue.splice(index, 1);
+    this.untrackQueuedTask(task);
+    this.pending--;
+    return true;
+  }
+
   private dropTask(task: InternalTask, status: 'cancelled' | 'dropped', reason: string): FrontierSchedulerRecord {
     task.status = status;
     return this.recordTask(task, status, undefined, reason);
@@ -789,13 +853,6 @@ class Scheduler implements FrontierScheduler {
 
   private nextRecordIdValue(): string {
     return 'rec-' + this.nextRecordId++;
-  }
-
-  private hasPendingTask(taskId: string): boolean {
-    for (const queue of this.queues.values()) {
-      if (queue.some((task) => task.id === taskId)) return true;
-    }
-    return false;
   }
 
   private laneSnapshot(lane: InternalLane): FrontierSchedulerLaneSnapshot {
@@ -896,13 +953,6 @@ function insertTask(queue: InternalTask[], task: InternalTask): void {
 function compareTaskOrder(left: InternalTask, right: InternalTask): number {
   if (left.priority !== right.priority) return right.priority - left.priority;
   return left.sequence - right.sequence;
-}
-
-function removeTask(queue: InternalTask[], taskId: string): boolean {
-  const index = queue.findIndex((task) => task.id === taskId);
-  if (index < 0) return false;
-  queue.splice(index, 1);
-  return true;
 }
 
 function oldestTask(queue: InternalTask[]): InternalTask | undefined {

@@ -58,6 +58,17 @@ import {
 
 {
   const scheduler = createScheduler({
+    lanes: [{ id: 'render', maxQueued: 2, backpressure: 'coalesce-key' }]
+  });
+  const first = scheduler.schedule({ id: 'row-a-1', lane: 'render', key: 'row:a', run() {} });
+  const second = scheduler.schedule({ id: 'row-a-2', lane: 'render', key: 'row:a', run() {} });
+  assert.strictEqual(second.id, first.id);
+  assert.strictEqual(scheduler.getPendingCount('render'), 1);
+  assert.strictEqual(scheduler.history().at(-1).reason, 'coalesced');
+}
+
+{
+  const scheduler = createScheduler({
     lanes: [{ id: 'network', maxQueued: 1, backpressure: 'throw' }]
   });
   scheduler.schedule({ id: 'a', lane: 'network', run() {} });
