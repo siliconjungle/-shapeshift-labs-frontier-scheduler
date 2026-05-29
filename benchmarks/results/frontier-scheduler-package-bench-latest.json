@@ -1,30 +1,30 @@
 {
   "package": "@shapeshift-labs/frontier-scheduler",
-  "generatedAt": "2026-05-28T13:32:38.842Z",
+  "generatedAt": "2026-05-29T05:02:31.387Z",
   "rows": [
     {
       "name": "schedule-run-1k",
       "iterations": 80,
-      "meanMs": 2.61141305,
-      "medianMs": 2.0079159999999945,
-      "p95Ms": 6.41904199999999,
-      "opsPerSec": 382.9344423319015
+      "meanMs": 2.934123374999997,
+      "medianMs": 2.247041999999965,
+      "p95Ms": 6.7424159999999915,
+      "opsPerSec": 340.81729777296806
     },
     {
       "name": "serialize-restore-1k",
       "iterations": 80,
-      "meanMs": 3.6776756000000055,
-      "medianMs": 2.668375000000026,
-      "p95Ms": 7.98620799999992,
-      "opsPerSec": 271.91087762063586
+      "meanMs": 4.062057350000003,
+      "medianMs": 2.834957999999972,
+      "p95Ms": 8.866499999999974,
+      "opsPerSec": 246.18066999964915
     },
     {
       "name": "inspect-graph-1k",
       "iterations": 80,
-      "meanMs": 1.9861609750000013,
-      "medianMs": 1.4189589999999725,
-      "p95Ms": 5.26520800000003,
-      "opsPerSec": 503.48386288276527
+      "meanMs": 2.026168825000009,
+      "medianMs": 1.4737079999999878,
+      "p95Ms": 5.58095800000001,
+      "opsPerSec": 493.54228910317755
     }
   ]
 }
