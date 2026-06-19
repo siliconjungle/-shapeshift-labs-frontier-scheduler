@@ -1092,6 +1092,7 @@ export function summarizeModelAwarePoolSlotAllocation(
   const nonExpensiveTiers: ModelAwarePoolTierCapacitySummary[] = [];
   let expensiveTierSummary: ModelAwarePoolTierCapacitySummary | undefined;
   let remainingSlots = requestedSlots;
+  const pressureAwareOrder = capacity.backpressureReason !== 'none';
 
   for (const tier of capacity.tiers) {
     allocationTiers[allocationTiers.length] = tier;
@@ -1111,7 +1112,14 @@ export function summarizeModelAwarePoolSlotAllocation(
     && !capacity.escalationBudgetExhausted
     && capacity.backpressureReason !== 'expensive-tier-saturated';
 
-  for (const tier of nonExpensiveTiers) {
+  const allocatableTiers = pressureAwareOrder
+    ? nonExpensiveTiers
+        .map((tier, index) => ({ tier, index }))
+        .sort((left, right) => compareModelAwarePoolTierAllocationPressure(left.tier, right.tier, left.index - right.index))
+        .map(({ tier }) => tier)
+    : nonExpensiveTiers;
+
+  for (const tier of allocatableTiers) {
     const allocatedSlots = Math.min(tier.openSlots, remainingSlots);
     allocationByTier[tier.id] = allocatedSlots;
     remainingSlots -= allocatedSlots;
@@ -1157,6 +1165,17 @@ export function summarizeModelAwarePoolSlotAllocation(
     downgradeAdvice: capacity.downgradeAdvice,
     isBackpressured: capacity.isBackpressured
   };
+}
+
+function compareModelAwarePoolTierAllocationPressure(
+  left: ModelAwarePoolTierCapacitySummary,
+  right: ModelAwarePoolTierCapacitySummary,
+  stableOrder: number
+): number {
+  if (left.saturation !== right.saturation) return right.saturation - left.saturation;
+  if (left.queuedCount !== right.queuedCount) return right.queuedCount - left.queuedCount;
+  if (left.openSlots !== right.openSlots) return left.openSlots - right.openSlots;
+  return stableOrder;
 }
 
 export function deserializeSchedulerState(

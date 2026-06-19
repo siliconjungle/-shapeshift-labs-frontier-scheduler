@@ -625,6 +625,26 @@ import {
 
 {
   const allocation = summarizeModelAwarePoolSlotAllocation({
+    requestedSlots: 2,
+    budgetRemaining: 10,
+    escalationBudgetRemaining: 3,
+    expensiveTierId: 'deep',
+    tiers: [
+      { id: 'fast', desiredConcurrency: 4, activeCount: 0, queuedCount: 0 },
+      { id: 'standard', desiredConcurrency: 4, activeCount: 1, queuedCount: 2 },
+      { id: 'deep', desiredConcurrency: 4, activeCount: 0, queuedCount: 0 }
+    ]
+  });
+  assert.strictEqual(allocation.backpressureReason, 'refill-needed');
+  assert.strictEqual(allocation.downgradeAdvice, 'none');
+  assert.deepStrictEqual(allocation.allocationByTier, { fast: 0, standard: 2, deep: 0 });
+  assert.strictEqual(allocation.tiers[0].id, 'fast');
+  assert.strictEqual(allocation.tiers[1].id, 'standard');
+  assert.strictEqual(allocation.tiers[2].id, 'deep');
+}
+
+{
+  const allocation = summarizeModelAwarePoolSlotAllocation({
     requestedSlots: 3,
     budgetRemaining: 0,
     escalationBudgetRemaining: 2,

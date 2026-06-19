@@ -502,7 +502,7 @@ const capacity = summarizeModelAwarePoolCapacity({
 - `backpressureReason` distinguishes `budget-exhausted`, `escalation-budget-exhausted`, `expensive-tier-saturated`, `at-capacity`, and `refill-needed`.
 - `downgradeAdvice` tells coordinators when to shift work to a cheaper tier versus applying backpressure.
 
-`summarizeModelAwarePoolSlotAllocation()` turns that capacity summary into a slot plan. It fills cheaper tiers first and only spends expensive-tier slots when the budget and escalation budget are still healthy.
+`summarizeModelAwarePoolSlotAllocation()` turns that capacity summary into a slot plan. When any tier is under pressure, it ranks non-expensive tiers by saturation so the most pressed capacity fills first, then only spends expensive-tier slots when the budget and escalation budget are still healthy.
 
 ```ts
 import { summarizeModelAwarePoolSlotAllocation } from '@shapeshift-labs/frontier-scheduler';
