@@ -234,11 +234,34 @@ scheduler.schedule({
 const result = scheduler.run({ maxUnits: 16 });
 const graph = scheduler.inspect();
 const replay = scheduler.serialize();
+const metrics = scheduler.metrics();
 ```
 
 `serialize()` stores the deterministic pending queue and recent records. `deserializeSchedulerState(snapshot, { handlers })` recreates queued work when each task has a serializable `type` and a registered handler.
 
 Renderers, mutation registries, virtual layout, persistence, logging, and game loops can consume this scheduler structurally. They do not need to import this package unless they want the default implementation.
+
+## Swarm Dashboard Metrics
+
+`scheduler.metrics()` summarizes each lane from scheduler history plus the live queue. Each lane reports active, queued, completed, failed, cancelled, and dropped counts, total runtime milliseconds, completed/failed runtime totals, total units, configured `maxQueued`, and a numeric pressure value. Bounded lanes use `queued / maxQueued`; unbounded lanes use `queued / max(1, active)`.
+
+Agent runners that already have structural task records can use the pure helper without owning a scheduler instance:
+
+```ts
+import { summarizeSchedulerThroughput } from '@shapeshift-labs/frontier-scheduler';
+
+const dashboard = summarizeSchedulerThroughput(records, {
+  now: performance.now(),
+  lanes: [
+    { id: 'research', maxQueued: 16 },
+    { id: 'implementation', maxQueued: 8 }
+  ],
+  activeByLane: { implementation: 4 },
+  queuedByLane: { implementation: 7 }
+});
+```
+
+Swarm coordinators can scale lanes with sustained pressure near or above `1`, rising failed or dropped counts, or high queued counts. Healthy lanes should show completed work, low or zero queue pressure, and stable failed/runtime totals.
 
 ## Features
 
@@ -249,6 +272,7 @@ Renderers, mutation registries, virtual layout, persistence, logging, and game l
 - queued typed tasks with handler-based replay
 - JSON snapshots for pending work and optional history
 - `inspect()` work graphs for lanes, queued tasks, completed records, causes, parent/child work, dependencies, and task keys
+- `metrics()` and `summarizeSchedulerThroughput()` for lane throughput, runtime totals, queue pressure, and swarm backpressure dashboards
 
 ## Benchmarks
 

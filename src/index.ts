@@ -148,6 +148,53 @@ export interface FrontierSchedulerLaneSnapshot {
   backpressure: FrontierSchedulerBackpressurePolicy;
 }
 
+export interface FrontierSchedulerThroughputRecord {
+  lane?: string;
+  status?: FrontierScheduledTaskStatus;
+  queuedAt?: number;
+  startedAt?: number;
+  endedAt?: number;
+  durationMs?: number;
+  units?: number;
+}
+
+export interface FrontierSchedulerThroughputLaneOptions {
+  id: string;
+  maxQueued?: number | null;
+}
+
+export interface FrontierSchedulerThroughputOptions {
+  lanes?: readonly (string | FrontierSchedulerLaneSnapshot | FrontierSchedulerThroughputLaneOptions)[];
+  queuedByLane?: Record<string, number>;
+  activeByLane?: Record<string, number>;
+  now?: number;
+}
+
+export interface FrontierSchedulerLaneThroughputMetrics {
+  id: string;
+  active: number;
+  queued: number;
+  completed: number;
+  failed: number;
+  cancelled: number;
+  dropped: number;
+  total: number;
+  totalRuntimeMs: number;
+  completedRuntimeMs: number;
+  failedRuntimeMs: number;
+  totalUnits: number;
+  maxQueued: number;
+  pressure: number;
+}
+
+export interface FrontierSchedulerThroughputMetrics {
+  kind: 'frontier.scheduler.throughput';
+  version: 1;
+  lanes: FrontierSchedulerLaneThroughputMetrics[];
+  byLane: Record<string, FrontierSchedulerLaneThroughputMetrics>;
+  totals: FrontierSchedulerLaneThroughputMetrics;
+}
+
 export interface FrontierSchedulerGraphNode {
   id: string;
   kind: 'lane' | 'task' | 'record';
@@ -206,6 +253,7 @@ export interface FrontierScheduler {
   clear(laneId?: string): number;
   getPendingCount(laneId?: string): number;
   snapshot(): FrontierSchedulerSnapshot;
+  metrics(options?: FrontierSchedulerThroughputOptions): FrontierSchedulerThroughputMetrics;
   history(): FrontierSchedulerRecord[];
   clearHistory(): void;
   inspect(): FrontierSchedulerGraph;
@@ -246,6 +294,37 @@ export function createScheduler(options: FrontierSchedulerOptions = {}): Frontie
 }
 
 export const createDeterministicScheduler = createScheduler;
+
+export function summarizeSchedulerThroughput(
+  records: readonly FrontierSchedulerThroughputRecord[] = [],
+  options: FrontierSchedulerThroughputOptions = {}
+): FrontierSchedulerThroughputMetrics {
+  if (!Array.isArray(records)) throw new TypeError('scheduler throughput records must be an array');
+  const lanes = new Map<string, FrontierSchedulerLaneThroughputMetrics>();
+  for (const lane of options.lanes ?? []) {
+    const input = readThroughputLane(lane);
+    ensureThroughputLane(lanes, input.id, input.maxQueued);
+  }
+  for (const record of records) applyThroughputRecord(lanes, record, options.now);
+  applyThroughputCounts(lanes, options.queuedByLane, 'queued', 'queuedByLane');
+  applyThroughputCounts(lanes, options.activeByLane, 'active', 'activeByLane');
+
+  const laneMetrics = Array.from(lanes.values());
+  for (const lane of laneMetrics) finalizeThroughputLane(lane);
+  const totals = createThroughputLane('total', totalMaxQueued(laneMetrics));
+  for (const lane of laneMetrics) addThroughputLane(totals, lane);
+  finalizeThroughputLane(totals);
+
+  const byLane: Record<string, FrontierSchedulerLaneThroughputMetrics> = {};
+  for (const lane of laneMetrics) byLane[lane.id] = lane;
+  return {
+    kind: 'frontier.scheduler.throughput',
+    version: 1,
+    lanes: laneMetrics,
+    byLane,
+    totals
+  };
+}
 
 export function deserializeSchedulerState(
   state: FrontierSchedulerSerializedState,
@@ -454,6 +533,18 @@ class Scheduler implements FrontierScheduler {
       pendingByLane: this.pendingByLane(),
       lanes: Array.from(this.lanes.values(), (lane) => this.laneSnapshot(lane))
     };
+  }
+
+  metrics(options: FrontierSchedulerThroughputOptions = {}): FrontierSchedulerThroughputMetrics {
+    const lanes: (string | FrontierSchedulerLaneSnapshot | FrontierSchedulerThroughputLaneOptions)[] =
+      Array.from(this.lanes.values(), (lane) => this.laneSnapshot(lane));
+    if (options.lanes !== undefined) lanes.push(...options.lanes);
+    return summarizeSchedulerThroughput(this.records, {
+      ...options,
+      lanes,
+      queuedByLane: mergeThroughputCounts(this.pendingByLane(), options.queuedByLane),
+      now: options.now ?? this.clock()
+    });
   }
 
   history(): FrontierSchedulerRecord[] {
@@ -887,6 +978,164 @@ class Scheduler implements FrontierScheduler {
 
 export class FrontierSchedulerBackpressureError extends Error {}
 export class FrontierSchedulerDroppedError extends Error {}
+
+function createThroughputLane(id: string, maxQueued = Infinity): FrontierSchedulerLaneThroughputMetrics {
+  return {
+    id,
+    active: 0,
+    queued: 0,
+    completed: 0,
+    failed: 0,
+    cancelled: 0,
+    dropped: 0,
+    total: 0,
+    totalRuntimeMs: 0,
+    completedRuntimeMs: 0,
+    failedRuntimeMs: 0,
+    totalUnits: 0,
+    maxQueued,
+    pressure: 0
+  };
+}
+
+function ensureThroughputLane(
+  lanes: Map<string, FrontierSchedulerLaneThroughputMetrics>,
+  id: string,
+  maxQueued?: number | null
+): FrontierSchedulerLaneThroughputMetrics {
+  let lane = lanes.get(id);
+  if (lane === undefined) {
+    lane = createThroughputLane(id, readNonNegativeLimit(maxQueued, Infinity, 'lane.maxQueued'));
+    lanes.set(id, lane);
+    return lane;
+  }
+  if (maxQueued !== undefined) lane.maxQueued = readNonNegativeLimit(maxQueued, lane.maxQueued, 'lane.maxQueued');
+  return lane;
+}
+
+function readThroughputLane(
+  input: string | FrontierSchedulerLaneSnapshot | FrontierSchedulerThroughputLaneOptions
+): FrontierSchedulerThroughputLaneOptions {
+  if (typeof input === 'string') return { id: normalizeId(input, 'metrics lane id') };
+  return {
+    id: normalizeId(input.id, 'metrics lane id'),
+    maxQueued: input.maxQueued
+  };
+}
+
+function applyThroughputRecord(
+  lanes: Map<string, FrontierSchedulerLaneThroughputMetrics>,
+  record: FrontierSchedulerThroughputRecord,
+  now: number | undefined
+): void {
+  if (record === null || typeof record !== 'object') throw new TypeError('scheduler throughput record must be an object');
+  const lane = ensureThroughputLane(lanes, normalizeId(record.lane ?? 'default', 'metrics record lane'));
+  const runtimeMs = readRecordRuntimeMs(record, now);
+  const units = record.units === undefined ? 0 : readUnits(record.units, 'record.units');
+  switch (record.status) {
+    case 'queued':
+      lane.queued++;
+      break;
+    case 'running':
+      lane.active++;
+      lane.totalRuntimeMs += runtimeMs;
+      break;
+    case 'completed':
+      lane.completed++;
+      lane.completedRuntimeMs += runtimeMs;
+      lane.totalRuntimeMs += runtimeMs;
+      break;
+    case 'failed':
+      lane.failed++;
+      lane.failedRuntimeMs += runtimeMs;
+      lane.totalRuntimeMs += runtimeMs;
+      break;
+    case 'cancelled':
+      lane.cancelled++;
+      lane.totalRuntimeMs += runtimeMs;
+      break;
+    case 'dropped':
+      lane.dropped++;
+      lane.totalRuntimeMs += runtimeMs;
+      break;
+    case undefined:
+      return;
+  }
+  lane.totalUnits += units;
+}
+
+function applyThroughputCounts(
+  lanes: Map<string, FrontierSchedulerLaneThroughputMetrics>,
+  counts: Record<string, number> | undefined,
+  field: 'queued' | 'active',
+  label: string
+): void {
+  if (counts === undefined) return;
+  for (const id of Object.keys(counts)) {
+    ensureThroughputLane(lanes, normalizeId(id, label + ' lane'))[field] += readNonNegativeLimit(counts[id], 0, label + '.' + id);
+  }
+}
+
+function readRecordRuntimeMs(record: FrontierSchedulerThroughputRecord, now: number | undefined): number {
+  if (record.durationMs !== undefined) return readTimeLimit(record.durationMs, 0, 'record.durationMs');
+  if (record.startedAt === undefined) return 0;
+  const startedAt = readTimeLimit(record.startedAt, 0, 'record.startedAt');
+  const endedAt = record.endedAt === undefined
+    ? record.status === 'running' && now !== undefined
+      ? readTimeLimit(now, 0, 'metrics.now')
+      : undefined
+    : readTimeLimit(record.endedAt, 0, 'record.endedAt');
+  return endedAt === undefined ? 0 : Math.max(0, endedAt - startedAt);
+}
+
+function finalizeThroughputLane(lane: FrontierSchedulerLaneThroughputMetrics): void {
+  lane.total = lane.active + lane.queued + lane.completed + lane.failed + lane.cancelled + lane.dropped;
+  lane.pressure = calculateLanePressure(lane);
+}
+
+function calculateLanePressure(lane: FrontierSchedulerLaneThroughputMetrics): number {
+  if (lane.queued <= 0) return 0;
+  if (Number.isFinite(lane.maxQueued) && lane.maxQueued > 0) return lane.queued / lane.maxQueued;
+  return lane.queued / Math.max(1, lane.active);
+}
+
+function addThroughputLane(
+  target: FrontierSchedulerLaneThroughputMetrics,
+  source: FrontierSchedulerLaneThroughputMetrics
+): void {
+  target.active += source.active;
+  target.queued += source.queued;
+  target.completed += source.completed;
+  target.failed += source.failed;
+  target.cancelled += source.cancelled;
+  target.dropped += source.dropped;
+  target.totalRuntimeMs += source.totalRuntimeMs;
+  target.completedRuntimeMs += source.completedRuntimeMs;
+  target.failedRuntimeMs += source.failedRuntimeMs;
+  target.totalUnits += source.totalUnits;
+}
+
+function totalMaxQueued(lanes: readonly FrontierSchedulerLaneThroughputMetrics[]): number {
+  let total = 0;
+  let hasWork = false;
+  for (const lane of lanes) {
+    if (lane.total === 0) continue;
+    hasWork = true;
+    if (!Number.isFinite(lane.maxQueued)) return Infinity;
+    total += lane.maxQueued;
+  }
+  return hasWork ? total : 0;
+}
+
+function mergeThroughputCounts(
+  left: Record<string, number>,
+  right: Record<string, number> | undefined
+): Record<string, number> {
+  if (right === undefined) return left;
+  const out: Record<string, number> = { ...left };
+  for (const id of Object.keys(right)) out[id] = (out[id] ?? 0) + right[id];
+  return out;
+}
 
 function defaultClock(): number {
   const perf = globalThis.performance;

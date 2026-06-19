@@ -3,7 +3,8 @@ import {
   FrontierSchedulerBackpressureError,
   FrontierSchedulerDroppedError,
   createScheduler,
-  deserializeSchedulerState
+  deserializeSchedulerState,
+  summarizeSchedulerThroughput
 } from '../dist/index.js';
 
 {
@@ -176,6 +177,56 @@ import {
   await Promise.resolve();
   assert.strictEqual(ran, true);
   assert.strictEqual(scheduler.getPendingCount(), 0);
+}
+
+{
+  let now = 0;
+  const scheduler = createScheduler({
+    clock: () => now,
+    lanes: [
+      { id: 'healthy', maxQueued: 8 },
+      { id: 'congested', maxQueued: 2 }
+    ]
+  });
+  scheduler.schedule({ id: 'healthy-a', lane: 'healthy', run() { now += 5; } });
+  scheduler.schedule({ id: 'healthy-b', lane: 'healthy', run() { now += 7; } });
+  scheduler.schedule({ id: 'queued-a', lane: 'congested', run() {} });
+  scheduler.schedule({ id: 'queued-b', lane: 'congested', run() {} });
+
+  const result = scheduler.run({ lane: 'healthy' });
+  assert.strictEqual(result.completed, 2);
+  assert.strictEqual(result.pending, 2);
+
+  const metrics = scheduler.metrics({ activeByLane: { congested: 1 } });
+  assert.strictEqual(metrics.byLane.healthy.completed, 2);
+  assert.strictEqual(metrics.byLane.healthy.failed, 0);
+  assert.strictEqual(metrics.byLane.healthy.queued, 0);
+  assert.strictEqual(metrics.byLane.healthy.totalRuntimeMs, 12);
+  assert.strictEqual(metrics.byLane.healthy.pressure, 0);
+  assert.strictEqual(metrics.byLane.congested.active, 1);
+  assert.strictEqual(metrics.byLane.congested.queued, 2);
+  assert.strictEqual(metrics.byLane.congested.pressure, 1);
+  assert.strictEqual(metrics.totals.completed, 2);
+  assert.strictEqual(metrics.totals.queued, 2);
+
+  const structural = summarizeSchedulerThroughput([
+    { lane: 'healthy', status: 'completed', durationMs: 12, units: 2 },
+    { lane: 'congested', status: 'running', startedAt: 10, units: 1 },
+    { lane: 'congested', status: 'queued', units: 1 },
+    { lane: 'congested', status: 'failed', durationMs: 3, units: 1 }
+  ], {
+    now: 25,
+    lanes: [
+      { id: 'healthy', maxQueued: 8 },
+      { id: 'congested', maxQueued: 2 }
+    ]
+  });
+  assert.strictEqual(structural.byLane.healthy.completed, 1);
+  assert.strictEqual(structural.byLane.healthy.totalRuntimeMs, 12);
+  assert.strictEqual(structural.byLane.congested.active, 1);
+  assert.strictEqual(structural.byLane.congested.failed, 1);
+  assert.strictEqual(structural.byLane.congested.totalRuntimeMs, 18);
+  assert.strictEqual(structural.byLane.congested.pressure, 0.5);
 }
 
 console.log('frontier scheduler smoke passed');
