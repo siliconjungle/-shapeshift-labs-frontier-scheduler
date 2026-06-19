@@ -3,7 +3,10 @@ import {
   FrontierSchedulerBackpressureError,
   FrontierSchedulerDroppedError,
   createScheduler,
-  deserializeSchedulerState
+  deserializeSchedulerState,
+  summarizeContinuousWorkerPoolCapacity,
+  summarizeModelAwarePoolCapacity,
+  summarizeSchedulerThroughput
 } from '../dist/index.js';
 
 {
@@ -54,6 +57,17 @@ import {
     () => scheduler.schedule({ id: 'row-c', lane: 'render', key: 'row:c', run() {} }),
     FrontierSchedulerDroppedError
   );
+}
+
+{
+  const scheduler = createScheduler({
+    lanes: [{ id: 'render', maxQueued: 2, backpressure: 'coalesce-key' }]
+  });
+  const first = scheduler.schedule({ id: 'row-a-1', lane: 'render', key: 'row:a', run() {} });
+  const second = scheduler.schedule({ id: 'row-a-2', lane: 'render', key: 'row:a', run() {} });
+  assert.strictEqual(second.id, first.id);
+  assert.strictEqual(scheduler.getPendingCount('render'), 1);
+  assert.strictEqual(scheduler.history().at(-1).reason, 'coalesced');
 }
 
 {
@@ -115,6 +129,134 @@ import {
 }
 
 {
+  const recordCallbacks = [];
+  const errors = [];
+  const scheduler = createScheduler({
+    onRecord(record) {
+      record.metadata = { touched: true };
+      record.dependsOn.push('callback-mutation');
+      recordCallbacks.push(record);
+    },
+    onError(error, record) {
+      record.metadata = { touched: true };
+      record.dependsOn.push('error-mutation');
+      errors.push({ error, record });
+    }
+  });
+  const input = { nested: { count: 1 } };
+  scheduler.schedule({
+    id: 'ok',
+    input,
+    metadata: { source: 'test' },
+    run(ctx) {
+      assert.deepStrictEqual(ctx.input, { nested: { count: 1 } });
+    }
+  });
+  input.nested.count = 2;
+  scheduler.schedule({
+    id: 'fail',
+    metadata: { source: 'test' },
+    run() {
+      throw new Error('expected');
+    }
+  });
+  scheduler.run();
+
+  assert.strictEqual(recordCallbacks.length, 2);
+  assert.strictEqual(errors.length, 1);
+  const history = scheduler.history();
+  assert.strictEqual(history[0].metadata.source, 'test');
+  assert.deepStrictEqual(history[0].dependsOn, []);
+  assert.strictEqual(history[1].metadata.source, 'test');
+  assert.deepStrictEqual(history[1].dependsOn, []);
+}
+
+{
+  const full = summarizeContinuousWorkerPoolCapacity({
+    desiredConcurrency: 4,
+    activeCount: 4,
+    queuedCount: 0,
+    leaseCount: 0
+  });
+  assert.strictEqual(full.occupiedCount, 4);
+  assert.strictEqual(full.availableCount, 0);
+  assert.strictEqual(full.nextRefillCount, 0);
+  assert.strictEqual(full.backpressureReason, 'none');
+  assert.strictEqual(full.isIdle, false);
+  assert.strictEqual(full.isWaste, false);
+}
+
+{
+  const underfilled = summarizeContinuousWorkerPoolCapacity({
+    desiredConcurrency: 4,
+    activeCount: 2,
+    queuedCount: 6,
+    leaseCount: 1
+  });
+  assert.strictEqual(underfilled.occupiedCount, 3);
+  assert.strictEqual(underfilled.availableCount, 1);
+  assert.strictEqual(underfilled.nextRefillCount, 1);
+  assert.strictEqual(underfilled.backpressureReason, 'refill-needed');
+  assert.strictEqual(underfilled.idleCount, 0);
+  assert.strictEqual(underfilled.isWaste, false);
+}
+
+{
+  const backpressured = summarizeContinuousWorkerPoolCapacity({
+    desiredConcurrency: 4,
+    activeCount: 4,
+    queuedCount: 6,
+    leaseCount: 2
+  });
+  assert.strictEqual(backpressured.occupiedCount, 6);
+  assert.strictEqual(backpressured.availableCount, 0);
+  assert.strictEqual(backpressured.nextRefillCount, 0);
+  assert.strictEqual(backpressured.backpressureReason, 'oversubscribed');
+  assert.strictEqual(backpressured.wasteCount, 2);
+  assert.strictEqual(backpressured.isIdle, false);
+  assert.strictEqual(backpressured.isWaste, true);
+}
+
+{
+  const capacity = summarizeModelAwarePoolCapacity({
+    budgetRemaining: 12,
+    escalationBudgetRemaining: 4,
+    expensiveTierId: 'deep',
+    tiers: [
+      { id: 'fast', desiredConcurrency: 4, activeCount: 2, leaseCount: 1, queuedCount: 3 },
+      { id: 'standard', desiredConcurrency: 3, activeCount: 3, queuedCount: 1 },
+      { id: 'deep', desiredConcurrency: 2, activeCount: 2, queuedCount: 2 }
+    ]
+  });
+  assert.deepStrictEqual(capacity.openSlotsByTier, { fast: 1, standard: 0, deep: 0 });
+  assert.strictEqual(capacity.byTier.fast.openSlots, 1);
+  assert.strictEqual(capacity.byTier.standard.openSlots, 0);
+  assert.strictEqual(capacity.byTier.deep.openSlots, 0);
+  assert.strictEqual(capacity.totalOpenSlots, 1);
+  assert.strictEqual(capacity.expensiveTierOpenSlots, 0);
+  assert.strictEqual(capacity.expensiveTierSaturation, 2);
+  assert.strictEqual(capacity.backpressureReason, 'expensive-tier-saturated');
+  assert.strictEqual(capacity.downgradeAdvice, 'downgrade');
+  assert.strictEqual(capacity.isBackpressured, true);
+}
+
+{
+  const budgeted = summarizeModelAwarePoolCapacity({
+    budgetRemaining: 0,
+    escalationBudgetRemaining: 3,
+    tiers: [
+      { id: 'fast', desiredConcurrency: 1, activeCount: 1, queuedCount: 2 },
+      { id: 'standard', desiredConcurrency: 1, activeCount: 1, queuedCount: 0 },
+      { id: 'deep', desiredConcurrency: 1, activeCount: 1, queuedCount: 0 }
+    ]
+  });
+  assert.strictEqual(budgeted.backpressureReason, 'budget-exhausted');
+  assert.strictEqual(budgeted.downgradeAdvice, 'backpressure');
+  assert.strictEqual(budgeted.budgetExhausted, true);
+  assert.strictEqual(budgeted.escalationBudgetExhausted, false);
+}
+
+{
   const scheduler = createScheduler({ framePolicy: 'microtask', autoRun: true });
   let ran = false;
   scheduler.schedule({ id: 'auto', run() { ran = true; } });
@@ -122,6 +264,56 @@ import {
   await Promise.resolve();
   assert.strictEqual(ran, true);
   assert.strictEqual(scheduler.getPendingCount(), 0);
+}
+
+{
+  let now = 0;
+  const scheduler = createScheduler({
+    clock: () => now,
+    lanes: [
+      { id: 'healthy', maxQueued: 8 },
+      { id: 'congested', maxQueued: 2 }
+    ]
+  });
+  scheduler.schedule({ id: 'healthy-a', lane: 'healthy', run() { now += 5; } });
+  scheduler.schedule({ id: 'healthy-b', lane: 'healthy', run() { now += 7; } });
+  scheduler.schedule({ id: 'queued-a', lane: 'congested', run() {} });
+  scheduler.schedule({ id: 'queued-b', lane: 'congested', run() {} });
+
+  const result = scheduler.run({ lane: 'healthy' });
+  assert.strictEqual(result.completed, 2);
+  assert.strictEqual(result.pending, 2);
+
+  const metrics = scheduler.metrics({ activeByLane: { congested: 1 } });
+  assert.strictEqual(metrics.byLane.healthy.completed, 2);
+  assert.strictEqual(metrics.byLane.healthy.failed, 0);
+  assert.strictEqual(metrics.byLane.healthy.queued, 0);
+  assert.strictEqual(metrics.byLane.healthy.totalRuntimeMs, 12);
+  assert.strictEqual(metrics.byLane.healthy.pressure, 0);
+  assert.strictEqual(metrics.byLane.congested.active, 1);
+  assert.strictEqual(metrics.byLane.congested.queued, 2);
+  assert.strictEqual(metrics.byLane.congested.pressure, 1);
+  assert.strictEqual(metrics.totals.completed, 2);
+  assert.strictEqual(metrics.totals.queued, 2);
+
+  const structural = summarizeSchedulerThroughput([
+    { lane: 'healthy', status: 'completed', durationMs: 12, units: 2 },
+    { lane: 'congested', status: 'running', startedAt: 10, units: 1 },
+    { lane: 'congested', status: 'queued', units: 1 },
+    { lane: 'congested', status: 'failed', durationMs: 3, units: 1 }
+  ], {
+    now: 25,
+    lanes: [
+      { id: 'healthy', maxQueued: 8 },
+      { id: 'congested', maxQueued: 2 }
+    ]
+  });
+  assert.strictEqual(structural.byLane.healthy.completed, 1);
+  assert.strictEqual(structural.byLane.healthy.totalRuntimeMs, 12);
+  assert.strictEqual(structural.byLane.congested.active, 1);
+  assert.strictEqual(structural.byLane.congested.failed, 1);
+  assert.strictEqual(structural.byLane.congested.totalRuntimeMs, 18);
+  assert.strictEqual(structural.byLane.congested.pressure, 0.5);
 }
 
 console.log('frontier scheduler smoke passed');

@@ -5,7 +5,7 @@ import {
   type FrontierSchedulerGraph,
   type FrontierSchedulerSerializedState,
   type FrontierSchedulerTaskContext
-} from '../src/index.js';
+} from '../src/index.ts';
 
 const scheduler: FrontierScheduler = createScheduler({
   lanes: [{ id: 'action', priority: 'critical', maxQueued: 128, backpressure: 'replace-key' }],

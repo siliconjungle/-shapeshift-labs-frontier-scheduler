@@ -148,6 +148,127 @@ export interface FrontierSchedulerLaneSnapshot {
   backpressure: FrontierSchedulerBackpressurePolicy;
 }
 
+export interface FrontierSchedulerThroughputRecord {
+  lane?: string;
+  status?: FrontierScheduledTaskStatus;
+  queuedAt?: number;
+  startedAt?: number;
+  endedAt?: number;
+  durationMs?: number;
+  units?: number;
+}
+
+export interface FrontierSchedulerThroughputLaneOptions {
+  id: string;
+  maxQueued?: number | null;
+}
+
+export interface FrontierSchedulerThroughputOptions {
+  lanes?: readonly (string | FrontierSchedulerLaneSnapshot | FrontierSchedulerThroughputLaneOptions)[];
+  queuedByLane?: Record<string, number>;
+  activeByLane?: Record<string, number>;
+  now?: number;
+}
+
+export interface FrontierSchedulerLaneThroughputMetrics {
+  id: string;
+  active: number;
+  queued: number;
+  completed: number;
+  failed: number;
+  cancelled: number;
+  dropped: number;
+  total: number;
+  totalRuntimeMs: number;
+  completedRuntimeMs: number;
+  failedRuntimeMs: number;
+  totalUnits: number;
+  maxQueued: number;
+  pressure: number;
+}
+
+export interface FrontierSchedulerThroughputMetrics {
+  kind: 'frontier.scheduler.throughput';
+  version: 1;
+  lanes: FrontierSchedulerLaneThroughputMetrics[];
+  byLane: Record<string, FrontierSchedulerLaneThroughputMetrics>;
+  totals: FrontierSchedulerLaneThroughputMetrics;
+}
+
+export type ContinuousWorkerPoolBackpressureReason =
+  | 'none'
+  | 'refill-needed'
+  | 'at-capacity'
+  | 'oversubscribed';
+
+export interface ContinuousWorkerPoolCapacityInput {
+  desiredConcurrency: number;
+  activeCount?: number | null;
+  queuedCount?: number | null;
+  leaseCount?: number | null;
+}
+
+export interface ContinuousWorkerPoolCapacitySummary {
+  desiredConcurrency: number;
+  activeCount: number;
+  queuedCount: number;
+  leaseCount: number;
+  occupiedCount: number;
+  availableCount: number;
+  nextRefillCount: number;
+  idleCount: number;
+  wasteCount: number;
+  backpressureReason: ContinuousWorkerPoolBackpressureReason;
+  isIdle: boolean;
+  isWaste: boolean;
+}
+
+export type ModelAwarePoolBackpressureReason =
+  | 'none'
+  | 'refill-needed'
+  | 'at-capacity'
+  | 'budget-exhausted'
+  | 'escalation-budget-exhausted'
+  | 'expensive-tier-saturated';
+
+export type ModelAwarePoolDowngradeAdvice = 'none' | 'backpressure' | 'downgrade';
+
+export interface ModelAwarePoolTierCapacityInput extends ContinuousWorkerPoolCapacityInput {
+  id: string;
+}
+
+export interface ModelAwarePoolCapacityInput {
+  tiers: readonly ModelAwarePoolTierCapacityInput[];
+  budgetRemaining?: number | null;
+  escalationBudgetRemaining?: number | null;
+  expensiveTierId?: string;
+}
+
+export interface ModelAwarePoolTierCapacitySummary extends ContinuousWorkerPoolCapacitySummary {
+  id: string;
+  openSlots: number;
+  saturation: number;
+  isExpensiveTier: boolean;
+}
+
+export interface ModelAwarePoolCapacitySummary {
+  tiers: ModelAwarePoolTierCapacitySummary[];
+  byTier: Record<string, ModelAwarePoolTierCapacitySummary>;
+  openSlotsByTier: Record<string, number>;
+  totalOpenSlots: number;
+  totalQueuedCount: number;
+  budgetRemaining: number;
+  escalationBudgetRemaining: number;
+  budgetExhausted: boolean;
+  escalationBudgetExhausted: boolean;
+  expensiveTierId: string;
+  expensiveTierOpenSlots: number;
+  expensiveTierSaturation: number;
+  backpressureReason: ModelAwarePoolBackpressureReason;
+  downgradeAdvice: ModelAwarePoolDowngradeAdvice;
+  isBackpressured: boolean;
+}
+
 export interface FrontierSchedulerGraphNode {
   id: string;
   kind: 'lane' | 'task' | 'record';
@@ -206,6 +327,7 @@ export interface FrontierScheduler {
   clear(laneId?: string): number;
   getPendingCount(laneId?: string): number;
   snapshot(): FrontierSchedulerSnapshot;
+  metrics(options?: FrontierSchedulerThroughputOptions): FrontierSchedulerThroughputMetrics;
   history(): FrontierSchedulerRecord[];
   clearHistory(): void;
   inspect(): FrontierSchedulerGraph;
@@ -247,6 +369,151 @@ export function createScheduler(options: FrontierSchedulerOptions = {}): Frontie
 
 export const createDeterministicScheduler = createScheduler;
 
+export function summarizeSchedulerThroughput(
+  records: readonly FrontierSchedulerThroughputRecord[] = [],
+  options: FrontierSchedulerThroughputOptions = {}
+): FrontierSchedulerThroughputMetrics {
+  if (!Array.isArray(records)) throw new TypeError('scheduler throughput records must be an array');
+  const lanes = new Map<string, FrontierSchedulerLaneThroughputMetrics>();
+  for (const lane of options.lanes ?? []) {
+    const input = readThroughputLane(lane);
+    ensureThroughputLane(lanes, input.id, input.maxQueued);
+  }
+  for (const record of records) applyThroughputRecord(lanes, record, options.now);
+  applyThroughputCounts(lanes, options.queuedByLane, 'queued', 'queuedByLane');
+  applyThroughputCounts(lanes, options.activeByLane, 'active', 'activeByLane');
+
+  const laneMetrics = Array.from(lanes.values());
+  for (const lane of laneMetrics) finalizeThroughputLane(lane);
+  const totals = createThroughputLane('total', totalMaxQueued(laneMetrics));
+  for (const lane of laneMetrics) addThroughputLane(totals, lane);
+  finalizeThroughputLane(totals);
+
+  const byLane: Record<string, FrontierSchedulerLaneThroughputMetrics> = {};
+  for (const lane of laneMetrics) byLane[lane.id] = lane;
+  return {
+    kind: 'frontier.scheduler.throughput',
+    version: 1,
+    lanes: laneMetrics,
+    byLane,
+    totals
+  };
+}
+
+export function summarizeContinuousWorkerPoolCapacity(
+  input: ContinuousWorkerPoolCapacityInput
+): ContinuousWorkerPoolCapacitySummary {
+  if (input === null || typeof input !== 'object') throw new TypeError('continuous worker pool capacity input must be an object');
+  const desiredConcurrency = readCount(input.desiredConcurrency, 0, 'desiredConcurrency');
+  const activeCount = readCount(input.activeCount, 0, 'activeCount');
+  const queuedCount = readCount(input.queuedCount, 0, 'queuedCount');
+  const leaseCount = readCount(input.leaseCount, 0, 'leaseCount');
+  const occupiedCount = activeCount + leaseCount;
+  const availableCount = Math.max(0, desiredConcurrency - occupiedCount);
+  const wasteCount = Math.max(0, occupiedCount - desiredConcurrency);
+  const nextRefillCount = queuedCount > 0 ? Math.min(availableCount, queuedCount) : 0;
+  const idleCount = queuedCount === 0 ? availableCount : 0;
+  const backpressureReason: ContinuousWorkerPoolBackpressureReason = queuedCount === 0
+    ? 'none'
+    : wasteCount > 0
+      ? 'oversubscribed'
+      : availableCount > 0
+        ? 'refill-needed'
+        : 'at-capacity';
+
+  return {
+    desiredConcurrency,
+    activeCount,
+    queuedCount,
+    leaseCount,
+    occupiedCount,
+    availableCount,
+    nextRefillCount,
+    idleCount,
+    wasteCount,
+    backpressureReason,
+    isIdle: idleCount > 0,
+    isWaste: wasteCount > 0
+  };
+}
+
+export function summarizeModelAwarePoolCapacity(
+  input: ModelAwarePoolCapacityInput
+): ModelAwarePoolCapacitySummary {
+  if (input === null || typeof input !== 'object') throw new TypeError('model aware pool capacity input must be an object');
+  if (!Array.isArray(input.tiers)) throw new TypeError('model aware pool capacity tiers must be an array');
+  const budgetRemaining = readNonNegativeLimit(input.budgetRemaining, Infinity, 'budgetRemaining');
+  const escalationBudgetRemaining = readNonNegativeLimit(input.escalationBudgetRemaining, Infinity, 'escalationBudgetRemaining');
+  const expensiveTierId = normalizeId(input.expensiveTierId ?? 'deep', 'expensive tier id');
+  const tiers: ModelAwarePoolTierCapacitySummary[] = [];
+  const byTier: Record<string, ModelAwarePoolTierCapacitySummary> = {};
+  const openSlotsByTier: Record<string, number> = {};
+  let totalOpenSlots = 0;
+  let totalQueuedCount = 0;
+  let expensiveTierSummary: ModelAwarePoolTierCapacitySummary | undefined;
+
+  for (const tierInput of input.tiers) {
+    const summary = summarizeModelAwarePoolTierCapacity(tierInput, expensiveTierId);
+    if (byTier[summary.id] !== undefined) throw new TypeError('duplicate model aware pool tier id: ' + summary.id);
+    tiers[tiers.length] = summary;
+    byTier[summary.id] = summary;
+    openSlotsByTier[summary.id] = summary.openSlots;
+    totalOpenSlots += summary.openSlots;
+    totalQueuedCount += summary.queuedCount;
+    if (summary.id === expensiveTierId) expensiveTierSummary = summary;
+  }
+
+  if (expensiveTierSummary === undefined) {
+    expensiveTierSummary = summarizeModelAwarePoolTierCapacity({ id: expensiveTierId, desiredConcurrency: 0 }, expensiveTierId);
+    byTier[expensiveTierId] = expensiveTierSummary;
+    openSlotsByTier[expensiveTierId] = expensiveTierSummary.openSlots;
+  }
+
+  const expensiveTierOpenSlots = expensiveTierSummary.openSlots;
+  const expensiveTierSaturation = expensiveTierSummary.desiredConcurrency === 0
+    ? expensiveTierSummary.occupiedCount + expensiveTierSummary.queuedCount
+    : (expensiveTierSummary.occupiedCount + expensiveTierSummary.queuedCount) / expensiveTierSummary.desiredConcurrency;
+  const budgetExhausted = budgetRemaining <= 0;
+  const escalationBudgetExhausted = escalationBudgetRemaining <= 0;
+  const cheaperOpenSlots = totalOpenSlots - expensiveTierOpenSlots;
+  let backpressureReason: ModelAwarePoolBackpressureReason = 'none';
+  let downgradeAdvice: ModelAwarePoolDowngradeAdvice = 'none';
+
+  if (budgetExhausted) {
+    backpressureReason = 'budget-exhausted';
+    downgradeAdvice = 'backpressure';
+  } else if (escalationBudgetExhausted) {
+    backpressureReason = 'escalation-budget-exhausted';
+    downgradeAdvice = 'backpressure';
+  } else if (expensiveTierSaturation >= 1 && cheaperOpenSlots > 0 && totalQueuedCount > 0) {
+    backpressureReason = 'expensive-tier-saturated';
+    downgradeAdvice = 'downgrade';
+  } else if (totalQueuedCount > 0 && totalOpenSlots === 0) {
+    backpressureReason = 'at-capacity';
+    downgradeAdvice = 'backpressure';
+  } else if (totalQueuedCount > 0) {
+    backpressureReason = 'refill-needed';
+  }
+
+  return {
+    tiers,
+    byTier,
+    openSlotsByTier,
+    totalOpenSlots,
+    totalQueuedCount,
+    budgetRemaining,
+    escalationBudgetRemaining,
+    budgetExhausted,
+    escalationBudgetExhausted,
+    expensiveTierId,
+    expensiveTierOpenSlots,
+    expensiveTierSaturation,
+    backpressureReason,
+    downgradeAdvice,
+    isBackpressured: backpressureReason !== 'none'
+  };
+}
+
 export function deserializeSchedulerState(
   state: FrontierSchedulerSerializedState,
   options: FrontierSchedulerOptions = {}
@@ -271,6 +538,8 @@ class Scheduler implements FrontierScheduler {
   private readonly options: FrontierSchedulerOptions;
   private readonly lanes = new Map<string, InternalLane>();
   private readonly queues = new Map<string, InternalTask[]>();
+  private readonly pendingTasksById = new Map<string, InternalTask>();
+  private readonly queuedTasksByKey = new Map<string, Map<string, InternalTask[]>>();
   private readonly records: FrontierSchedulerRecord[] = [];
   private readonly completedTaskIds = new Set<string>();
   private readonly maxHistory: number;
@@ -296,15 +565,17 @@ class Scheduler implements FrontierScheduler {
     const laneId = normalizeId(task.lane ?? task.area ?? this.options.defaultLane ?? 'default', 'lane id');
     const lane = this.ensureLane({ id: laneId });
     const queue = this.queueFor(lane.id);
-    const existingByKey = task.key === undefined ? undefined : queue.find((item) => item.key === task.key);
+    const key = task.key === undefined ? undefined : String(task.key);
+    const existingByKey = key === undefined || (lane.backpressure !== 'coalesce-key' && lane.backpressure !== 'replace-key')
+      ? undefined
+      : this.firstQueuedTaskByKey(lane.id, key);
     if (existingByKey !== undefined && lane.backpressure === 'coalesce-key') {
       this.recordDropped(task, lane, 'coalesced');
       return existingByKey.view as FrontierScheduledTask<TInput>;
     }
     if (existingByKey !== undefined && lane.backpressure === 'replace-key') {
       this.dropTask(existingByKey, 'dropped', 'replaced');
-      removeTask(queue, existingByKey.id);
-      this.pending--;
+      this.removeQueuedTask(existingByKey);
     } else if (queue.length >= lane.maxQueued) {
       this.applyBackpressure(task, lane, queue);
     }
@@ -357,7 +628,7 @@ class Scheduler implements FrontierScheduler {
         task.status = 'failed';
         failed++;
         const record = this.recordTask(task, 'failed', startedAt, undefined, error);
-        this.options.onError?.(error, record);
+        this.options.onError?.(error, cloneRecord(record));
       }
       usedUnits += task.units;
       usedUnitsByLane.set(task.lane, (usedUnitsByLane.get(task.lane) ?? 0) + task.units);
@@ -395,22 +666,21 @@ class Scheduler implements FrontierScheduler {
 
   cancel(taskId: string, reason = 'cancelled'): boolean {
     const id = normalizeId(taskId, 'task id');
-    for (const queue of this.queues.values()) {
-      const index = queue.findIndex((task) => task.id === id);
-      if (index < 0) continue;
-      const task = queue[index];
-      queue.splice(index, 1);
-      this.pending--;
-      this.dropTask(task, 'cancelled', reason);
-      return true;
-    }
-    return false;
+    const task = this.pendingTasksById.get(id);
+    if (task === undefined) return false;
+    this.removeQueuedTask(task);
+    this.dropTask(task, 'cancelled', reason);
+    return true;
   }
 
   cancelLane(laneId: string, reason = 'lane-cancelled'): number {
     const queue = this.queueFor(normalizeId(laneId, 'lane id'));
     const count = queue.length;
-    while (queue.length !== 0) this.dropTask(queue.shift() as InternalTask, 'cancelled', reason);
+    for (const task of queue) {
+      this.untrackQueuedTask(task);
+      this.dropTask(task, 'cancelled', reason);
+    }
+    queue.length = 0;
     this.pending -= count;
     return count;
   }
@@ -419,14 +689,22 @@ class Scheduler implements FrontierScheduler {
     if (laneId !== undefined) {
       const queue = this.queueFor(normalizeId(laneId, 'lane id'));
       const count = queue.length;
-      while (queue.length !== 0) this.dropTask(queue.shift() as InternalTask, 'dropped', 'cleared');
+      for (const task of queue) {
+        this.untrackQueuedTask(task);
+        this.dropTask(task, 'dropped', 'cleared');
+      }
+      queue.length = 0;
       this.pending -= count;
       return count;
     }
     let count = 0;
     for (const queue of this.queues.values()) {
       count += queue.length;
-      while (queue.length !== 0) this.dropTask(queue.shift() as InternalTask, 'dropped', 'cleared');
+      for (const task of queue) {
+        this.untrackQueuedTask(task);
+        this.dropTask(task, 'dropped', 'cleared');
+      }
+      queue.length = 0;
     }
     this.pending = 0;
     return count;
@@ -443,6 +721,18 @@ class Scheduler implements FrontierScheduler {
       pendingByLane: this.pendingByLane(),
       lanes: Array.from(this.lanes.values(), (lane) => this.laneSnapshot(lane))
     };
+  }
+
+  metrics(options: FrontierSchedulerThroughputOptions = {}): FrontierSchedulerThroughputMetrics {
+    const lanes: (string | FrontierSchedulerLaneSnapshot | FrontierSchedulerThroughputLaneOptions)[] =
+      Array.from(this.lanes.values(), (lane) => this.laneSnapshot(lane));
+    if (options.lanes !== undefined) lanes.push(...options.lanes);
+    return summarizeSchedulerThroughput(this.records, {
+      ...options,
+      lanes,
+      queuedByLane: mergeThroughputCounts(this.pendingByLane(), options.queuedByLane),
+      now: options.now ?? this.clock()
+    });
   }
 
   history(): FrontierSchedulerRecord[] {
@@ -573,8 +863,9 @@ class Scheduler implements FrontierScheduler {
   }
 
   private enqueueTask<TInput>(task: InternalTask<TInput>): void {
-    if (this.hasPendingTask(task.id)) throw new TypeError('scheduler task id is already queued: ' + task.id);
+    if (this.pendingTasksById.has(task.id)) throw new TypeError('scheduler task id is already queued: ' + task.id);
     insertTask(this.queueFor(task.lane), task as InternalTask);
+    this.trackQueuedTask(task as InternalTask);
     this.pending++;
   }
 
@@ -591,8 +882,7 @@ class Scheduler implements FrontierScheduler {
       case 'cancel-old': {
         const oldest = oldestTask(queue);
         if (oldest !== undefined) {
-          removeTask(queue, oldest.id);
-          this.pending--;
+          this.removeQueuedTask(oldest);
           this.dropTask(oldest, lane.backpressure === 'cancel-old' ? 'cancelled' : 'dropped', 'backpressure');
         }
         return;
@@ -612,22 +902,30 @@ class Scheduler implements FrontierScheduler {
   ): InternalTask | null {
     let best: InternalTask | null = null;
     let bestLane: InternalLane | undefined;
+    let bestQueue: InternalTask[] | undefined;
+    let bestIndex = -1;
     for (const lane of this.lanes.values()) {
       if (laneFilter !== undefined && lane.id !== laneFilter) continue;
       const queue = this.queueFor(lane.id);
-      const task = queue.find((item) => this.canRunTask(item, lane, remainingUnits, usedUnitsByLane, elapsedMs));
-      if (task === undefined) continue;
-      if (
-        best === null ||
-        lane.priority > (bestLane as InternalLane).priority ||
-        lane.priority === (bestLane as InternalLane).priority && compareTaskOrder(task, best) < 0
-      ) {
-        best = task;
-        bestLane = lane;
+      for (let index = 0; index < queue.length; index++) {
+        const task = queue[index];
+        if (!this.canRunTask(task, lane, remainingUnits, usedUnitsByLane, elapsedMs)) continue;
+        if (
+          best === null ||
+          lane.priority > (bestLane as InternalLane).priority ||
+          lane.priority === (bestLane as InternalLane).priority && compareTaskOrder(task, best) < 0
+        ) {
+          best = task;
+          bestLane = lane;
+          bestQueue = queue;
+          bestIndex = index;
+        }
+        break;
       }
     }
     if (best === null) return null;
-    removeTask(this.queueFor(best.lane), best.id);
+    (bestQueue as InternalTask[]).splice(bestIndex, 1);
+    this.untrackQueuedTask(best);
     this.pending--;
     return best;
   }
@@ -717,6 +1015,51 @@ class Scheduler implements FrontierScheduler {
     return queue;
   }
 
+  private trackQueuedTask(task: InternalTask): void {
+    this.pendingTasksById.set(task.id, task);
+    if (task.key === undefined) return;
+    let keyedByLane = this.queuedTasksByKey.get(task.lane);
+    if (keyedByLane === undefined) {
+      keyedByLane = new Map();
+      this.queuedTasksByKey.set(task.lane, keyedByLane);
+    }
+    let keyedTasks = keyedByLane.get(task.key);
+    if (keyedTasks === undefined) {
+      keyedTasks = [];
+      keyedByLane.set(task.key, keyedTasks);
+    }
+    keyedTasks[keyedTasks.length] = task;
+  }
+
+  private untrackQueuedTask(task: InternalTask): void {
+    this.pendingTasksById.delete(task.id);
+    if (task.key === undefined) return;
+    const keyedByLane = this.queuedTasksByKey.get(task.lane);
+    const keyedTasks = keyedByLane?.get(task.key);
+    if (keyedTasks === undefined) return;
+    const index = keyedTasks.indexOf(task);
+    if (index >= 0) keyedTasks.splice(index, 1);
+    if (keyedTasks.length === 0) {
+      keyedByLane?.delete(task.key);
+      if (keyedByLane?.size === 0) this.queuedTasksByKey.delete(task.lane);
+    }
+  }
+
+  private firstQueuedTaskByKey(laneId: string, key: string): InternalTask | undefined {
+    return this.queuedTasksByKey.get(laneId)?.get(key)?.[0];
+  }
+
+  private removeQueuedTask(task: InternalTask): boolean {
+    const queue = this.queues.get(task.lane);
+    if (queue === undefined) return false;
+    const index = queue.indexOf(task);
+    if (index < 0) return false;
+    queue.splice(index, 1);
+    this.untrackQueuedTask(task);
+    this.pending--;
+    return true;
+  }
+
   private dropTask(task: InternalTask, status: 'cancelled' | 'dropped', reason: string): FrontierSchedulerRecord {
     task.status = status;
     return this.recordTask(task, status, undefined, reason);
@@ -781,21 +1124,13 @@ class Scheduler implements FrontierScheduler {
   }
 
   private pushRecord(record: FrontierSchedulerRecord): void {
-    const cloned = cloneRecord(record);
-    this.records[this.records.length] = cloned;
+    this.records[this.records.length] = record;
     if (this.records.length > this.maxHistory) this.records.splice(0, this.records.length - this.maxHistory);
-    this.options.onRecord?.(cloneRecord(cloned));
+    this.options.onRecord?.(cloneRecord(record));
   }
 
   private nextRecordIdValue(): string {
     return 'rec-' + this.nextRecordId++;
-  }
-
-  private hasPendingTask(taskId: string): boolean {
-    for (const queue of this.queues.values()) {
-      if (queue.some((task) => task.id === taskId)) return true;
-    }
-    return false;
   }
 
   private laneSnapshot(lane: InternalLane): FrontierSchedulerLaneSnapshot {
@@ -832,6 +1167,180 @@ class Scheduler implements FrontierScheduler {
 export class FrontierSchedulerBackpressureError extends Error {}
 export class FrontierSchedulerDroppedError extends Error {}
 
+function createThroughputLane(id: string, maxQueued = Infinity): FrontierSchedulerLaneThroughputMetrics {
+  return {
+    id,
+    active: 0,
+    queued: 0,
+    completed: 0,
+    failed: 0,
+    cancelled: 0,
+    dropped: 0,
+    total: 0,
+    totalRuntimeMs: 0,
+    completedRuntimeMs: 0,
+    failedRuntimeMs: 0,
+    totalUnits: 0,
+    maxQueued,
+    pressure: 0
+  };
+}
+
+function ensureThroughputLane(
+  lanes: Map<string, FrontierSchedulerLaneThroughputMetrics>,
+  id: string,
+  maxQueued?: number | null
+): FrontierSchedulerLaneThroughputMetrics {
+  let lane = lanes.get(id);
+  if (lane === undefined) {
+    lane = createThroughputLane(id, readNonNegativeLimit(maxQueued, Infinity, 'lane.maxQueued'));
+    lanes.set(id, lane);
+    return lane;
+  }
+  if (maxQueued !== undefined) lane.maxQueued = readNonNegativeLimit(maxQueued, lane.maxQueued, 'lane.maxQueued');
+  return lane;
+}
+
+function summarizeModelAwarePoolTierCapacity(
+  input: ModelAwarePoolTierCapacityInput,
+  expensiveTierId: string
+): ModelAwarePoolTierCapacitySummary {
+  if (input === null || typeof input !== 'object') throw new TypeError('model aware pool tier capacity input must be an object');
+  const id = normalizeId(input.id, 'model aware pool tier id');
+  const summary = summarizeContinuousWorkerPoolCapacity(input);
+  return {
+    ...summary,
+    id,
+    openSlots: summary.availableCount,
+    saturation: (summary.occupiedCount + summary.queuedCount) / Math.max(1, summary.desiredConcurrency),
+    isExpensiveTier: id === expensiveTierId
+  };
+}
+
+function readThroughputLane(
+  input: string | FrontierSchedulerLaneSnapshot | FrontierSchedulerThroughputLaneOptions
+): FrontierSchedulerThroughputLaneOptions {
+  if (typeof input === 'string') return { id: normalizeId(input, 'metrics lane id') };
+  return {
+    id: normalizeId(input.id, 'metrics lane id'),
+    maxQueued: input.maxQueued
+  };
+}
+
+function applyThroughputRecord(
+  lanes: Map<string, FrontierSchedulerLaneThroughputMetrics>,
+  record: FrontierSchedulerThroughputRecord,
+  now: number | undefined
+): void {
+  if (record === null || typeof record !== 'object') throw new TypeError('scheduler throughput record must be an object');
+  const lane = ensureThroughputLane(lanes, normalizeId(record.lane ?? 'default', 'metrics record lane'));
+  const runtimeMs = readRecordRuntimeMs(record, now);
+  const units = record.units === undefined ? 0 : readUnits(record.units, 'record.units');
+  switch (record.status) {
+    case 'queued':
+      lane.queued++;
+      break;
+    case 'running':
+      lane.active++;
+      lane.totalRuntimeMs += runtimeMs;
+      break;
+    case 'completed':
+      lane.completed++;
+      lane.completedRuntimeMs += runtimeMs;
+      lane.totalRuntimeMs += runtimeMs;
+      break;
+    case 'failed':
+      lane.failed++;
+      lane.failedRuntimeMs += runtimeMs;
+      lane.totalRuntimeMs += runtimeMs;
+      break;
+    case 'cancelled':
+      lane.cancelled++;
+      lane.totalRuntimeMs += runtimeMs;
+      break;
+    case 'dropped':
+      lane.dropped++;
+      lane.totalRuntimeMs += runtimeMs;
+      break;
+    case undefined:
+      return;
+  }
+  lane.totalUnits += units;
+}
+
+function applyThroughputCounts(
+  lanes: Map<string, FrontierSchedulerLaneThroughputMetrics>,
+  counts: Record<string, number> | undefined,
+  field: 'queued' | 'active',
+  label: string
+): void {
+  if (counts === undefined) return;
+  for (const id of Object.keys(counts)) {
+    ensureThroughputLane(lanes, normalizeId(id, label + ' lane'))[field] += readNonNegativeLimit(counts[id], 0, label + '.' + id);
+  }
+}
+
+function readRecordRuntimeMs(record: FrontierSchedulerThroughputRecord, now: number | undefined): number {
+  if (record.durationMs !== undefined) return readTimeLimit(record.durationMs, 0, 'record.durationMs');
+  if (record.startedAt === undefined) return 0;
+  const startedAt = readTimeLimit(record.startedAt, 0, 'record.startedAt');
+  const endedAt = record.endedAt === undefined
+    ? record.status === 'running' && now !== undefined
+      ? readTimeLimit(now, 0, 'metrics.now')
+      : undefined
+    : readTimeLimit(record.endedAt, 0, 'record.endedAt');
+  return endedAt === undefined ? 0 : Math.max(0, endedAt - startedAt);
+}
+
+function finalizeThroughputLane(lane: FrontierSchedulerLaneThroughputMetrics): void {
+  lane.total = lane.active + lane.queued + lane.completed + lane.failed + lane.cancelled + lane.dropped;
+  lane.pressure = calculateLanePressure(lane);
+}
+
+function calculateLanePressure(lane: FrontierSchedulerLaneThroughputMetrics): number {
+  if (lane.queued <= 0) return 0;
+  if (Number.isFinite(lane.maxQueued) && lane.maxQueued > 0) return lane.queued / lane.maxQueued;
+  return lane.queued / Math.max(1, lane.active);
+}
+
+function addThroughputLane(
+  target: FrontierSchedulerLaneThroughputMetrics,
+  source: FrontierSchedulerLaneThroughputMetrics
+): void {
+  target.active += source.active;
+  target.queued += source.queued;
+  target.completed += source.completed;
+  target.failed += source.failed;
+  target.cancelled += source.cancelled;
+  target.dropped += source.dropped;
+  target.totalRuntimeMs += source.totalRuntimeMs;
+  target.completedRuntimeMs += source.completedRuntimeMs;
+  target.failedRuntimeMs += source.failedRuntimeMs;
+  target.totalUnits += source.totalUnits;
+}
+
+function totalMaxQueued(lanes: readonly FrontierSchedulerLaneThroughputMetrics[]): number {
+  let total = 0;
+  let hasWork = false;
+  for (const lane of lanes) {
+    if (lane.total === 0) continue;
+    hasWork = true;
+    if (!Number.isFinite(lane.maxQueued)) return Infinity;
+    total += lane.maxQueued;
+  }
+  return hasWork ? total : 0;
+}
+
+function mergeThroughputCounts(
+  left: Record<string, number>,
+  right: Record<string, number> | undefined
+): Record<string, number> {
+  if (right === undefined) return left;
+  const out: Record<string, number> = { ...left };
+  for (const id of Object.keys(right)) out[id] = (out[id] ?? 0) + right[id];
+  return out;
+}
+
 function defaultClock(): number {
   const perf = globalThis.performance;
   return perf && typeof perf.now === 'function' ? perf.now() : Date.now();
@@ -853,6 +1362,12 @@ function readPriority(value: FrontierSchedulerPriority | undefined): number {
 }
 
 function readUnits(value: number, label: string): number {
+  if (!Number.isFinite(value) || value < 0) throw new RangeError(label + ' must be a non-negative number');
+  return Math.floor(value);
+}
+
+function readCount(value: number | null | undefined, fallback: number, label: string): number {
+  if (value === undefined || value === null) return fallback;
   if (!Number.isFinite(value) || value < 0) throw new RangeError(label + ' must be a non-negative number');
   return Math.floor(value);
 }
@@ -898,13 +1413,6 @@ function compareTaskOrder(left: InternalTask, right: InternalTask): number {
   return left.sequence - right.sequence;
 }
 
-function removeTask(queue: InternalTask[], taskId: string): boolean {
-  const index = queue.findIndex((task) => task.id === taskId);
-  if (index < 0) return false;
-  queue.splice(index, 1);
-  return true;
-}
-
 function oldestTask(queue: InternalTask[]): InternalTask | undefined {
   let oldest: InternalTask | undefined;
   for (const task of queue) if (oldest === undefined || task.sequence < oldest.sequence) oldest = task;
@@ -919,14 +1427,50 @@ function cloneMetadata(value: Record<string, unknown> | undefined): Record<strin
     : undefined;
 }
 
+const CLONE_SERIALIZABLE_FALLBACK = Symbol('cloneSerializableFallback');
+
 function cloneSerializable<T>(value: T): T | undefined {
   if (value === undefined) return undefined;
+  const fast = clonePlainSerializable(value, 0);
+  if (fast !== CLONE_SERIALIZABLE_FALLBACK) return fast as T;
   if (value === null || typeof value !== 'object') return value;
   try {
     return JSON.parse(JSON.stringify(value)) as T;
   } catch {
     return undefined;
   }
+}
+
+function clonePlainSerializable(value: unknown, depth: number): unknown {
+  if (value === null) return null;
+  const type = typeof value;
+  if (type === 'string' || type === 'boolean') return value;
+  if (type === 'number') return Number.isFinite(value) ? value : CLONE_SERIALIZABLE_FALLBACK;
+  if (type !== 'object' || depth > 64) return CLONE_SERIALIZABLE_FALLBACK;
+  if (Array.isArray(value)) {
+    const array = value as unknown[];
+    const out = new Array(array.length);
+    for (let i = 0, length = array.length; i < length; i++) {
+      const child = clonePlainSerializable(array[i], depth + 1);
+      if (child === CLONE_SERIALIZABLE_FALLBACK) return CLONE_SERIALIZABLE_FALLBACK;
+      out[i] = child;
+    }
+    return out;
+  }
+  const proto = Object.getPrototypeOf(value);
+  if ((proto !== Object.prototype && proto !== null) || typeof (value as { toJSON?: unknown }).toJSON === 'function') {
+    return CLONE_SERIALIZABLE_FALLBACK;
+  }
+  const source = value as Record<string, unknown>;
+  const keys = Object.keys(source);
+  const out: Record<string, unknown> = {};
+  for (let i = 0, length = keys.length; i < length; i++) {
+    const key = keys[i];
+    const child = clonePlainSerializable(source[key], depth + 1);
+    if (child === CLONE_SERIALIZABLE_FALLBACK) return CLONE_SERIALIZABLE_FALLBACK;
+    out[key] = child;
+  }
+  return out;
 }
 
 function cloneRecord(record: FrontierSchedulerRecord): FrontierSchedulerRecord {
