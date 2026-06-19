@@ -5,6 +5,7 @@ import {
   createScheduler,
   deserializeSchedulerState,
   summarizeContinuousWorkerPoolCapacity,
+  summarizeModelAwarePoolCapacity,
   summarizeSchedulerThroughput
 } from '../dist/index.js';
 
@@ -214,6 +215,45 @@ import {
   assert.strictEqual(backpressured.wasteCount, 2);
   assert.strictEqual(backpressured.isIdle, false);
   assert.strictEqual(backpressured.isWaste, true);
+}
+
+{
+  const capacity = summarizeModelAwarePoolCapacity({
+    budgetRemaining: 12,
+    escalationBudgetRemaining: 4,
+    expensiveTierId: 'deep',
+    tiers: [
+      { id: 'fast', desiredConcurrency: 4, activeCount: 2, leaseCount: 1, queuedCount: 3 },
+      { id: 'standard', desiredConcurrency: 3, activeCount: 3, queuedCount: 1 },
+      { id: 'deep', desiredConcurrency: 2, activeCount: 2, queuedCount: 2 }
+    ]
+  });
+  assert.deepStrictEqual(capacity.openSlotsByTier, { fast: 1, standard: 0, deep: 0 });
+  assert.strictEqual(capacity.byTier.fast.openSlots, 1);
+  assert.strictEqual(capacity.byTier.standard.openSlots, 0);
+  assert.strictEqual(capacity.byTier.deep.openSlots, 0);
+  assert.strictEqual(capacity.totalOpenSlots, 1);
+  assert.strictEqual(capacity.expensiveTierOpenSlots, 0);
+  assert.strictEqual(capacity.expensiveTierSaturation, 2);
+  assert.strictEqual(capacity.backpressureReason, 'expensive-tier-saturated');
+  assert.strictEqual(capacity.downgradeAdvice, 'downgrade');
+  assert.strictEqual(capacity.isBackpressured, true);
+}
+
+{
+  const budgeted = summarizeModelAwarePoolCapacity({
+    budgetRemaining: 0,
+    escalationBudgetRemaining: 3,
+    tiers: [
+      { id: 'fast', desiredConcurrency: 1, activeCount: 1, queuedCount: 2 },
+      { id: 'standard', desiredConcurrency: 1, activeCount: 1, queuedCount: 0 },
+      { id: 'deep', desiredConcurrency: 1, activeCount: 1, queuedCount: 0 }
+    ]
+  });
+  assert.strictEqual(budgeted.backpressureReason, 'budget-exhausted');
+  assert.strictEqual(budgeted.downgradeAdvice, 'backpressure');
+  assert.strictEqual(budgeted.budgetExhausted, true);
+  assert.strictEqual(budgeted.escalationBudgetExhausted, false);
 }
 
 {

@@ -288,6 +288,35 @@ const capacity = summarizeContinuousWorkerPoolCapacity({
 
 This keeps a continuous agent pool full when there is work, but avoids starting extra workers when the queue is empty or the pool is already saturated.
 
+## Model-Aware Pool Capacity
+
+`summarizeModelAwarePoolCapacity()` extends the same capacity math to model-aware pools with multiple tiers such as `fast`, `standard`, and `deep`. It reports per-tier open slots, the remaining model budget, remaining escalation budget, expensive-tier saturation, and whether the scheduler should backpressure or downgrade to a cheaper tier.
+
+```ts
+import { summarizeModelAwarePoolCapacity } from '@shapeshift-labs/frontier-scheduler';
+
+const capacity = summarizeModelAwarePoolCapacity({
+  budgetRemaining: 120,
+  escalationBudgetRemaining: 18,
+  expensiveTierId: 'deep',
+  tiers: [
+    { id: 'fast', desiredConcurrency: 4, activeCount: 2, leaseCount: 1, queuedCount: 6 },
+    { id: 'standard', desiredConcurrency: 3, activeCount: 3, queuedCount: 1 },
+    { id: 'deep', desiredConcurrency: 2, activeCount: 2, queuedCount: 2 }
+  ]
+});
+
+// capacity.openSlotsByTier.fast === 1
+// capacity.expensiveTierSaturation === 2
+// capacity.downgradeAdvice === 'downgrade'
+```
+
+- `openSlotsByTier` shows spare concurrency for each tier in the pool.
+- `budgetRemaining` and `escalationBudgetRemaining` let coordinators stop expensive routing before the pool overspends.
+- `expensiveTierSaturation` highlights how full the costly tier is, including queued work.
+- `backpressureReason` distinguishes `budget-exhausted`, `escalation-budget-exhausted`, `expensive-tier-saturated`, `at-capacity`, and `refill-needed`.
+- `downgradeAdvice` tells coordinators when to shift work to a cheaper tier versus applying backpressure.
+
 ## Features
 
 - deterministic lanes with lane priority, task priority, and stable FIFO ordering within equal priority
@@ -297,7 +326,7 @@ This keeps a continuous agent pool full when there is work, but avoids starting 
 - queued typed tasks with handler-based replay
 - JSON snapshots for pending work and optional history
 - `inspect()` work graphs for lanes, queued tasks, completed records, causes, parent/child work, dependencies, and task keys
-- `metrics()`, `summarizeSchedulerThroughput()`, and `summarizeContinuousWorkerPoolCapacity()` for lane throughput, runtime totals, queue pressure, and continuous pool capacity/refill dashboards
+- `metrics()`, `summarizeSchedulerThroughput()`, `summarizeContinuousWorkerPoolCapacity()`, and `summarizeModelAwarePoolCapacity()` for lane throughput, runtime totals, queue pressure, and continuous/model-aware pool capacity dashboards
 
 ## Benchmarks
 

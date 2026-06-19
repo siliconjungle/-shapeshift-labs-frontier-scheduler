@@ -223,6 +223,52 @@ export interface ContinuousWorkerPoolCapacitySummary {
   isWaste: boolean;
 }
 
+export type ModelAwarePoolBackpressureReason =
+  | 'none'
+  | 'refill-needed'
+  | 'at-capacity'
+  | 'budget-exhausted'
+  | 'escalation-budget-exhausted'
+  | 'expensive-tier-saturated';
+
+export type ModelAwarePoolDowngradeAdvice = 'none' | 'backpressure' | 'downgrade';
+
+export interface ModelAwarePoolTierCapacityInput extends ContinuousWorkerPoolCapacityInput {
+  id: string;
+}
+
+export interface ModelAwarePoolCapacityInput {
+  tiers: readonly ModelAwarePoolTierCapacityInput[];
+  budgetRemaining?: number | null;
+  escalationBudgetRemaining?: number | null;
+  expensiveTierId?: string;
+}
+
+export interface ModelAwarePoolTierCapacitySummary extends ContinuousWorkerPoolCapacitySummary {
+  id: string;
+  openSlots: number;
+  saturation: number;
+  isExpensiveTier: boolean;
+}
+
+export interface ModelAwarePoolCapacitySummary {
+  tiers: ModelAwarePoolTierCapacitySummary[];
+  byTier: Record<string, ModelAwarePoolTierCapacitySummary>;
+  openSlotsByTier: Record<string, number>;
+  totalOpenSlots: number;
+  totalQueuedCount: number;
+  budgetRemaining: number;
+  escalationBudgetRemaining: number;
+  budgetExhausted: boolean;
+  escalationBudgetExhausted: boolean;
+  expensiveTierId: string;
+  expensiveTierOpenSlots: number;
+  expensiveTierSaturation: number;
+  backpressureReason: ModelAwarePoolBackpressureReason;
+  downgradeAdvice: ModelAwarePoolDowngradeAdvice;
+  isBackpressured: boolean;
+}
+
 export interface FrontierSchedulerGraphNode {
   id: string;
   kind: 'lane' | 'task' | 'record';
@@ -388,6 +434,83 @@ export function summarizeContinuousWorkerPoolCapacity(
     backpressureReason,
     isIdle: idleCount > 0,
     isWaste: wasteCount > 0
+  };
+}
+
+export function summarizeModelAwarePoolCapacity(
+  input: ModelAwarePoolCapacityInput
+): ModelAwarePoolCapacitySummary {
+  if (input === null || typeof input !== 'object') throw new TypeError('model aware pool capacity input must be an object');
+  if (!Array.isArray(input.tiers)) throw new TypeError('model aware pool capacity tiers must be an array');
+  const budgetRemaining = readNonNegativeLimit(input.budgetRemaining, Infinity, 'budgetRemaining');
+  const escalationBudgetRemaining = readNonNegativeLimit(input.escalationBudgetRemaining, Infinity, 'escalationBudgetRemaining');
+  const expensiveTierId = normalizeId(input.expensiveTierId ?? 'deep', 'expensive tier id');
+  const tiers: ModelAwarePoolTierCapacitySummary[] = [];
+  const byTier: Record<string, ModelAwarePoolTierCapacitySummary> = {};
+  const openSlotsByTier: Record<string, number> = {};
+  let totalOpenSlots = 0;
+  let totalQueuedCount = 0;
+  let expensiveTierSummary: ModelAwarePoolTierCapacitySummary | undefined;
+
+  for (const tierInput of input.tiers) {
+    const summary = summarizeModelAwarePoolTierCapacity(tierInput, expensiveTierId);
+    if (byTier[summary.id] !== undefined) throw new TypeError('duplicate model aware pool tier id: ' + summary.id);
+    tiers[tiers.length] = summary;
+    byTier[summary.id] = summary;
+    openSlotsByTier[summary.id] = summary.openSlots;
+    totalOpenSlots += summary.openSlots;
+    totalQueuedCount += summary.queuedCount;
+    if (summary.id === expensiveTierId) expensiveTierSummary = summary;
+  }
+
+  if (expensiveTierSummary === undefined) {
+    expensiveTierSummary = summarizeModelAwarePoolTierCapacity({ id: expensiveTierId, desiredConcurrency: 0 }, expensiveTierId);
+    byTier[expensiveTierId] = expensiveTierSummary;
+    openSlotsByTier[expensiveTierId] = expensiveTierSummary.openSlots;
+  }
+
+  const expensiveTierOpenSlots = expensiveTierSummary.openSlots;
+  const expensiveTierSaturation = expensiveTierSummary.desiredConcurrency === 0
+    ? expensiveTierSummary.occupiedCount + expensiveTierSummary.queuedCount
+    : (expensiveTierSummary.occupiedCount + expensiveTierSummary.queuedCount) / expensiveTierSummary.desiredConcurrency;
+  const budgetExhausted = budgetRemaining <= 0;
+  const escalationBudgetExhausted = escalationBudgetRemaining <= 0;
+  const cheaperOpenSlots = totalOpenSlots - expensiveTierOpenSlots;
+  let backpressureReason: ModelAwarePoolBackpressureReason = 'none';
+  let downgradeAdvice: ModelAwarePoolDowngradeAdvice = 'none';
+
+  if (budgetExhausted) {
+    backpressureReason = 'budget-exhausted';
+    downgradeAdvice = 'backpressure';
+  } else if (escalationBudgetExhausted) {
+    backpressureReason = 'escalation-budget-exhausted';
+    downgradeAdvice = 'backpressure';
+  } else if (expensiveTierSaturation >= 1 && cheaperOpenSlots > 0 && totalQueuedCount > 0) {
+    backpressureReason = 'expensive-tier-saturated';
+    downgradeAdvice = 'downgrade';
+  } else if (totalQueuedCount > 0 && totalOpenSlots === 0) {
+    backpressureReason = 'at-capacity';
+    downgradeAdvice = 'backpressure';
+  } else if (totalQueuedCount > 0) {
+    backpressureReason = 'refill-needed';
+  }
+
+  return {
+    tiers,
+    byTier,
+    openSlotsByTier,
+    totalOpenSlots,
+    totalQueuedCount,
+    budgetRemaining,
+    escalationBudgetRemaining,
+    budgetExhausted,
+    escalationBudgetExhausted,
+    expensiveTierId,
+    expensiveTierOpenSlots,
+    expensiveTierSaturation,
+    backpressureReason,
+    downgradeAdvice,
+    isBackpressured: backpressureReason !== 'none'
   };
 }
 
@@ -1076,6 +1199,22 @@ function ensureThroughputLane(
   }
   if (maxQueued !== undefined) lane.maxQueued = readNonNegativeLimit(maxQueued, lane.maxQueued, 'lane.maxQueued');
   return lane;
+}
+
+function summarizeModelAwarePoolTierCapacity(
+  input: ModelAwarePoolTierCapacityInput,
+  expensiveTierId: string
+): ModelAwarePoolTierCapacitySummary {
+  if (input === null || typeof input !== 'object') throw new TypeError('model aware pool tier capacity input must be an object');
+  const id = normalizeId(input.id, 'model aware pool tier id');
+  const summary = summarizeContinuousWorkerPoolCapacity(input);
+  return {
+    ...summary,
+    id,
+    openSlots: summary.availableCount,
+    saturation: (summary.occupiedCount + summary.queuedCount) / Math.max(1, summary.desiredConcurrency),
+    isExpensiveTier: id === expensiveTierId
+  };
 }
 
 function readThroughputLane(
