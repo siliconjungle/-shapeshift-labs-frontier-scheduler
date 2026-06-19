@@ -263,6 +263,31 @@ const dashboard = summarizeSchedulerThroughput(records, {
 
 Swarm coordinators can scale lanes with sustained pressure near or above `1`, rising failed or dropped counts, or high queued counts. Healthy lanes should show completed work, low or zero queue pressure, and stable failed/runtime totals.
 
+## Continuous Pool Capacity
+
+`summarizeContinuousWorkerPoolCapacity()` is a smaller pure helper for continuous worker pools, agent runners, and other lease-backed executors. It answers a different question than throughput metrics: "how many workers should I refill next, and is the pool wasting or idling capacity?"
+
+```ts
+import { summarizeContinuousWorkerPoolCapacity } from '@shapeshift-labs/frontier-scheduler';
+
+const capacity = summarizeContinuousWorkerPoolCapacity({
+  desiredConcurrency: 8,
+  activeCount: 5,
+  leaseCount: 1,
+  queuedCount: 12
+});
+
+// capacity.nextRefillCount === 2
+// capacity.backpressureReason === 'refill-needed'
+```
+
+- `nextRefillCount` tells you how many workers to start to reach the desired concurrency while queued work exists.
+- `backpressureReason` distinguishes between `refill-needed`, `at-capacity`, and `oversubscribed`.
+- `isIdle` flags spare pool capacity when no work is queued.
+- `isWaste` flags over-lease or over-active capacity above the desired concurrency.
+
+This keeps a continuous agent pool full when there is work, but avoids starting extra workers when the queue is empty or the pool is already saturated.
+
 ## Features
 
 - deterministic lanes with lane priority, task priority, and stable FIFO ordering within equal priority
@@ -272,7 +297,7 @@ Swarm coordinators can scale lanes with sustained pressure near or above `1`, ri
 - queued typed tasks with handler-based replay
 - JSON snapshots for pending work and optional history
 - `inspect()` work graphs for lanes, queued tasks, completed records, causes, parent/child work, dependencies, and task keys
-- `metrics()` and `summarizeSchedulerThroughput()` for lane throughput, runtime totals, queue pressure, and swarm backpressure dashboards
+- `metrics()`, `summarizeSchedulerThroughput()`, and `summarizeContinuousWorkerPoolCapacity()` for lane throughput, runtime totals, queue pressure, and continuous pool capacity/refill dashboards
 
 ## Benchmarks
 

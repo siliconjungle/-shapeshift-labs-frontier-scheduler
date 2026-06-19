@@ -4,6 +4,7 @@ import {
   FrontierSchedulerDroppedError,
   createScheduler,
   deserializeSchedulerState,
+  summarizeContinuousWorkerPoolCapacity,
   summarizeSchedulerThroughput
 } from '../dist/index.js';
 
@@ -167,6 +168,52 @@ import {
   assert.deepStrictEqual(history[0].dependsOn, []);
   assert.strictEqual(history[1].metadata.source, 'test');
   assert.deepStrictEqual(history[1].dependsOn, []);
+}
+
+{
+  const full = summarizeContinuousWorkerPoolCapacity({
+    desiredConcurrency: 4,
+    activeCount: 4,
+    queuedCount: 0,
+    leaseCount: 0
+  });
+  assert.strictEqual(full.occupiedCount, 4);
+  assert.strictEqual(full.availableCount, 0);
+  assert.strictEqual(full.nextRefillCount, 0);
+  assert.strictEqual(full.backpressureReason, 'none');
+  assert.strictEqual(full.isIdle, false);
+  assert.strictEqual(full.isWaste, false);
+}
+
+{
+  const underfilled = summarizeContinuousWorkerPoolCapacity({
+    desiredConcurrency: 4,
+    activeCount: 2,
+    queuedCount: 6,
+    leaseCount: 1
+  });
+  assert.strictEqual(underfilled.occupiedCount, 3);
+  assert.strictEqual(underfilled.availableCount, 1);
+  assert.strictEqual(underfilled.nextRefillCount, 1);
+  assert.strictEqual(underfilled.backpressureReason, 'refill-needed');
+  assert.strictEqual(underfilled.idleCount, 0);
+  assert.strictEqual(underfilled.isWaste, false);
+}
+
+{
+  const backpressured = summarizeContinuousWorkerPoolCapacity({
+    desiredConcurrency: 4,
+    activeCount: 4,
+    queuedCount: 6,
+    leaseCount: 2
+  });
+  assert.strictEqual(backpressured.occupiedCount, 6);
+  assert.strictEqual(backpressured.availableCount, 0);
+  assert.strictEqual(backpressured.nextRefillCount, 0);
+  assert.strictEqual(backpressured.backpressureReason, 'oversubscribed');
+  assert.strictEqual(backpressured.wasteCount, 2);
+  assert.strictEqual(backpressured.isIdle, false);
+  assert.strictEqual(backpressured.isWaste, true);
 }
 
 {

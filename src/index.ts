@@ -195,6 +195,34 @@ export interface FrontierSchedulerThroughputMetrics {
   totals: FrontierSchedulerLaneThroughputMetrics;
 }
 
+export type ContinuousWorkerPoolBackpressureReason =
+  | 'none'
+  | 'refill-needed'
+  | 'at-capacity'
+  | 'oversubscribed';
+
+export interface ContinuousWorkerPoolCapacityInput {
+  desiredConcurrency: number;
+  activeCount?: number | null;
+  queuedCount?: number | null;
+  leaseCount?: number | null;
+}
+
+export interface ContinuousWorkerPoolCapacitySummary {
+  desiredConcurrency: number;
+  activeCount: number;
+  queuedCount: number;
+  leaseCount: number;
+  occupiedCount: number;
+  availableCount: number;
+  nextRefillCount: number;
+  idleCount: number;
+  wasteCount: number;
+  backpressureReason: ContinuousWorkerPoolBackpressureReason;
+  isIdle: boolean;
+  isWaste: boolean;
+}
+
 export interface FrontierSchedulerGraphNode {
   id: string;
   kind: 'lane' | 'task' | 'record';
@@ -323,6 +351,43 @@ export function summarizeSchedulerThroughput(
     lanes: laneMetrics,
     byLane,
     totals
+  };
+}
+
+export function summarizeContinuousWorkerPoolCapacity(
+  input: ContinuousWorkerPoolCapacityInput
+): ContinuousWorkerPoolCapacitySummary {
+  if (input === null || typeof input !== 'object') throw new TypeError('continuous worker pool capacity input must be an object');
+  const desiredConcurrency = readCount(input.desiredConcurrency, 0, 'desiredConcurrency');
+  const activeCount = readCount(input.activeCount, 0, 'activeCount');
+  const queuedCount = readCount(input.queuedCount, 0, 'queuedCount');
+  const leaseCount = readCount(input.leaseCount, 0, 'leaseCount');
+  const occupiedCount = activeCount + leaseCount;
+  const availableCount = Math.max(0, desiredConcurrency - occupiedCount);
+  const wasteCount = Math.max(0, occupiedCount - desiredConcurrency);
+  const nextRefillCount = queuedCount > 0 ? Math.min(availableCount, queuedCount) : 0;
+  const idleCount = queuedCount === 0 ? availableCount : 0;
+  const backpressureReason: ContinuousWorkerPoolBackpressureReason = queuedCount === 0
+    ? 'none'
+    : wasteCount > 0
+      ? 'oversubscribed'
+      : availableCount > 0
+        ? 'refill-needed'
+        : 'at-capacity';
+
+  return {
+    desiredConcurrency,
+    activeCount,
+    queuedCount,
+    leaseCount,
+    occupiedCount,
+    availableCount,
+    nextRefillCount,
+    idleCount,
+    wasteCount,
+    backpressureReason,
+    isIdle: idleCount > 0,
+    isWaste: wasteCount > 0
   };
 }
 
@@ -1158,6 +1223,12 @@ function readPriority(value: FrontierSchedulerPriority | undefined): number {
 }
 
 function readUnits(value: number, label: string): number {
+  if (!Number.isFinite(value) || value < 0) throw new RangeError(label + ' must be a non-negative number');
+  return Math.floor(value);
+}
+
+function readCount(value: number | null | undefined, fallback: number, label: string): number {
+  if (value === undefined || value === null) return fallback;
   if (!Number.isFinite(value) || value < 0) throw new RangeError(label + ' must be a non-negative number');
   return Math.floor(value);
 }
