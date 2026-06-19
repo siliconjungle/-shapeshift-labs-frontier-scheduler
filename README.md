@@ -412,6 +412,31 @@ const capacity = summarizeLeaseAwarePoolCapacity({
 
 If you need gate execution split out from speculative backlog, use `summarizeCoordinatorGateRunCapacity()`.
 
+## Local Queue Concurrency Caps
+
+`summarizeLocalQueueConcurrencyCaps()` is a pure helper for local merge queues and coordinator dashboards. It treats each semantic scope as having one apply leader slot, so a busy scope keeps its own overflow queued while unrelated scopes still get a launch opportunity.
+
+```ts
+import { summarizeLocalQueueConcurrencyCaps } from '@shapeshift-labs/frontier-scheduler';
+
+const caps = summarizeLocalQueueConcurrencyCaps({
+  scopes: [
+    { id: 'scope:a', activeCount: 1, queuedCount: 3 },
+    { id: 'scope:b', activeCount: 0, queuedCount: 2 }
+  ]
+});
+
+// caps.launchableCount === 1
+// caps.byScope['scope:b'].launchableCount === 1
+// caps.byScope['scope:a'].blockedCount === 3
+```
+
+- `activeCount` counts the currently running local leaders for that scope.
+- `queuedCount` counts the same-scope work waiting behind the leader cap.
+- `launchableCount` is `1` when a scope has queued work but no active leader, so a different semantic scope can still progress.
+- `blockedCount` reports same-scope overflow that must remain queued locally.
+- `oversubscribedScopeCount` highlights scopes that already have more than one active leader and should be tightened up.
+
 ## Coordinator Gate Run Capacity
 
 `summarizeCoordinatorGateRunCapacity()` is a coordinator-focused helper for gate-run pools. It keeps active workers separate from gate execution, apply/repair/rerun drain, speculative backlog, and true human blockers so review/apply work can reserve capacity before new speculative launches start.
@@ -515,7 +540,7 @@ const allocation = summarizeModelAwarePoolSlotAllocation({
 - queued typed tasks with handler-based replay
 - JSON snapshots for pending work and optional history
 - `inspect()` work graphs for lanes, queued tasks, completed records, causes, parent/child work, dependencies, and task keys
-- `metrics()`, `summarizeSchedulerThroughput()`, `summarizeContinuousWorkerPoolCapacity()`, `createContinuousWorkerPoolRefillPlan()`, `summarizeContinuousWorkerPoolTargetFeedback()`, `recommendContinuousWorkerPoolTarget()`, `summarizeLeaseAwarePoolCapacity()`, `summarizeCoordinatorGateRunCapacity()`, `summarizeModelAwarePoolCapacity()`, and `summarizeModelAwarePoolSlotAllocation()` for lane throughput, runtime totals, queue pressure, refill planning, adaptive target feedback, and continuous/model-aware pool capacity dashboards
+- `metrics()`, `summarizeSchedulerThroughput()`, `summarizeContinuousWorkerPoolCapacity()`, `createContinuousWorkerPoolRefillPlan()`, `summarizeContinuousWorkerPoolTargetFeedback()`, `recommendContinuousWorkerPoolTarget()`, `summarizeLocalQueueConcurrencyCaps()`, `summarizeLeaseAwarePoolCapacity()`, `summarizeCoordinatorGateRunCapacity()`, `summarizeModelAwarePoolCapacity()`, and `summarizeModelAwarePoolSlotAllocation()` for lane throughput, runtime totals, queue pressure, refill planning, local leader caps, adaptive target feedback, and continuous/model-aware pool capacity dashboards
 
 ## Benchmarks
 

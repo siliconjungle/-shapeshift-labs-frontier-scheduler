@@ -10,6 +10,8 @@ import {
   summarizeContinuousWorkerPoolCapacity,
   summarizeContinuousWorkerPoolCapacityState,
   summarizeContinuousWorkerPoolTargetFeedback,
+  summarizeApplyLeaderConcurrencyCaps,
+  summarizeLocalQueueConcurrencyCaps,
   summarizeLeaseAwarePoolCapacity,
   summarizeModelAwarePoolCapacity,
   summarizeModelAwarePoolSlotAllocation,
@@ -239,6 +241,33 @@ import {
   assert.strictEqual(backpressured.wasteCount, 2);
   assert.strictEqual(backpressured.isIdle, false);
   assert.strictEqual(backpressured.isWaste, true);
+}
+
+{
+  const capacity = summarizeLocalQueueConcurrencyCaps({
+    scopes: [
+      { id: 'scope:a', activeCount: 1, queuedCount: 3 },
+      { id: 'scope:b', activeCount: 0, queuedCount: 2 },
+      { id: 'scope:c', activeCount: 2, queuedCount: 1 },
+      { id: 'scope:d', activeCount: 0, queuedCount: 0 }
+    ]
+  });
+  assert.strictEqual(summarizeApplyLeaderConcurrencyCaps, summarizeLocalQueueConcurrencyCaps);
+  assert.strictEqual(capacity.scopeCount, 4);
+  assert.strictEqual(capacity.activeScopeCount, 2);
+  assert.strictEqual(capacity.queuedScopeCount, 3);
+  assert.strictEqual(capacity.activeLeaderCount, 3);
+  assert.strictEqual(capacity.queuedCount, 6);
+  assert.strictEqual(capacity.launchableCount, 1);
+  assert.strictEqual(capacity.blockedCount, 5);
+  assert.strictEqual(capacity.leaderBlockedScopeCount, 2);
+  assert.strictEqual(capacity.oversubscribedScopeCount, 1);
+  assert.strictEqual(capacity.backpressureReason, 'oversubscribed');
+  assert.strictEqual(capacity.isBackpressured, true);
+  assert.strictEqual(capacity.byScope['scope:a'].leaderCapacity, 1);
+  assert.strictEqual(capacity.byScope['scope:b'].launchableCount, 1);
+  assert.strictEqual(capacity.byScope['scope:b'].blockedCount, 1);
+  assert.strictEqual(capacity.byScope['scope:c'].isOversubscribed, true);
 }
 
 {

@@ -411,6 +411,47 @@ export interface LeaseAwarePoolCapacitySummary {
   isIdle: boolean;
 }
 
+export type LocalQueueConcurrencyBackpressureReason = 'none' | 'refill-needed' | 'at-capacity' | 'oversubscribed';
+
+export interface LocalQueueConcurrencyScopeInput {
+  id: string;
+  activeCount?: number | null;
+  queuedCount?: number | null;
+}
+
+export interface LocalQueueConcurrencyScopeSummary {
+  id: string;
+  activeCount: number;
+  queuedCount: number;
+  leaderCapacity: number;
+  launchableCount: number;
+  blockedCount: number;
+  isActive: boolean;
+  isOversubscribed: boolean;
+}
+
+export interface LocalQueueConcurrencyCapsInput {
+  scopes: readonly LocalQueueConcurrencyScopeInput[];
+}
+
+export interface LocalQueueConcurrencyCapsSummary {
+  kind: 'frontier.scheduler.local-queue-concurrency-caps';
+  version: 1;
+  scopeCount: number;
+  activeScopeCount: number;
+  queuedScopeCount: number;
+  activeLeaderCount: number;
+  queuedCount: number;
+  launchableCount: number;
+  blockedCount: number;
+  leaderBlockedScopeCount: number;
+  oversubscribedScopeCount: number;
+  backpressureReason: LocalQueueConcurrencyBackpressureReason;
+  isBackpressured: boolean;
+  scopes: LocalQueueConcurrencyScopeSummary[];
+  byScope: Record<string, LocalQueueConcurrencyScopeSummary>;
+}
+
 export type ModelAwarePoolBackpressureReason =
   | 'none'
   | 'refill-needed'
@@ -820,6 +861,67 @@ export function recommendContinuousWorkerPoolTarget(
 }
 
 export const adjustContinuousWorkerPoolTarget = recommendContinuousWorkerPoolTarget;
+
+export function summarizeLocalQueueConcurrencyCaps(
+  input: LocalQueueConcurrencyCapsInput
+): LocalQueueConcurrencyCapsSummary {
+  if (input === null || typeof input !== 'object') throw new TypeError('local queue concurrency caps input must be an object');
+  if (!Array.isArray(input.scopes)) throw new TypeError('local queue concurrency caps scopes must be an array');
+
+  const scopes: LocalQueueConcurrencyScopeSummary[] = [];
+  const byScope: Record<string, LocalQueueConcurrencyScopeSummary> = {};
+  let activeScopeCount = 0;
+  let queuedScopeCount = 0;
+  let activeLeaderCount = 0;
+  let queuedCount = 0;
+  let launchableCount = 0;
+  let blockedCount = 0;
+  let leaderBlockedScopeCount = 0;
+  let oversubscribedScopeCount = 0;
+
+  for (const scopeInput of input.scopes) {
+    const scope = readLocalQueueConcurrencyScope(scopeInput);
+    if (byScope[scope.id] !== undefined) throw new TypeError('duplicate local queue scope id: ' + scope.id);
+    scopes[scopes.length] = scope;
+    byScope[scope.id] = scope;
+    activeLeaderCount += scope.activeCount;
+    queuedCount += scope.queuedCount;
+    if (scope.isActive) activeScopeCount++;
+    if (scope.queuedCount > 0) queuedScopeCount++;
+    if (scope.launchableCount > 0) launchableCount += scope.launchableCount;
+    if (scope.blockedCount > 0) blockedCount += scope.blockedCount;
+    if (scope.isActive && scope.queuedCount > 0) leaderBlockedScopeCount++;
+    if (scope.isOversubscribed) oversubscribedScopeCount++;
+  }
+
+  const backpressureReason: LocalQueueConcurrencyBackpressureReason = queuedCount === 0
+    ? 'none'
+    : oversubscribedScopeCount > 0
+      ? 'oversubscribed'
+      : launchableCount > 0
+        ? 'refill-needed'
+        : 'at-capacity';
+
+  return {
+    kind: 'frontier.scheduler.local-queue-concurrency-caps',
+    version: 1,
+    scopeCount: scopes.length,
+    activeScopeCount,
+    queuedScopeCount,
+    activeLeaderCount,
+    queuedCount,
+    launchableCount,
+    blockedCount,
+    leaderBlockedScopeCount,
+    oversubscribedScopeCount,
+    backpressureReason,
+    isBackpressured: backpressureReason !== 'none',
+    scopes,
+    byScope
+  };
+}
+
+export const summarizeApplyLeaderConcurrencyCaps = summarizeLocalQueueConcurrencyCaps;
 
 export function summarizeCoordinatorGateRunCapacity(
   input: CoordinatorGateRunCapacityInput
@@ -1817,6 +1919,27 @@ function readThroughputLane(
   return {
     id: normalizeId(input.id, 'metrics lane id'),
     maxQueued: input.maxQueued
+  };
+}
+
+function readLocalQueueConcurrencyScope(input: LocalQueueConcurrencyScopeInput): LocalQueueConcurrencyScopeSummary {
+  if (input === null || typeof input !== 'object') throw new TypeError('local queue concurrency scope must be an object');
+  const id = normalizeId(input.id, 'local queue scope id');
+  const activeCount = readNonNegativeLimit(input.activeCount, 0, 'local queue scope activeCount');
+  const queuedCount = readNonNegativeLimit(input.queuedCount, 0, 'local queue scope queuedCount');
+  const leaderCapacity = 1;
+  const launchableCount = activeCount === 0 && queuedCount > 0 ? 1 : 0;
+  const blockedCount = Math.max(0, queuedCount - launchableCount);
+
+  return {
+    id,
+    activeCount,
+    queuedCount,
+    leaderCapacity,
+    launchableCount,
+    blockedCount,
+    isActive: activeCount > 0,
+    isOversubscribed: activeCount > leaderCapacity
   };
 }
 
