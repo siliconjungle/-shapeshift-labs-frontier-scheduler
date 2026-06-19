@@ -276,19 +276,177 @@ const capacity = summarizeContinuousWorkerPoolCapacity({
   desiredConcurrency: 8,
   activeCount: 5,
   leaseCount: 1,
-  queuedCount: 12
+  queuedCount: 12,
+  reservedCount: 1
 });
 
-// capacity.nextRefillCount === 2
+// capacity.launchableCount === 1
+// capacity.nextRefillCount === 1
 // capacity.backpressureReason === 'refill-needed'
 ```
 
-- `nextRefillCount` tells you how many workers to start to reach the desired concurrency while queued work exists.
+- `availableCount` reports raw headroom before reservations.
+- `reservedCount` lets callers keep launch capacity available for review drain, reruns, or other non-speculative work.
+- `launchableCount` is the refill budget after reservations are applied.
+- `nextRefillCount` tells you how many workers to start from that launchable budget while queued work exists.
 - `backpressureReason` distinguishes between `refill-needed`, `at-capacity`, and `oversubscribed`.
-- `isIdle` flags spare pool capacity when no work is queued.
+- `isIdle` flags spare pool capacity when no work is queued and no launch reservation is pending.
 - `isWaste` flags over-lease or over-active capacity above the desired concurrency.
 
 This keeps a continuous agent pool full when there is work, but avoids starting extra workers when the queue is empty or the pool is already saturated.
+
+## Continuous Pool Capacity State
+
+`summarizeContinuousWorkerPoolCapacityState()` is the more explicit helper when you need to show where a pool is currently occupied instead of only whether it can refill. It keeps `active`, `queued`, `review-drain`, `rerun`, `conflict`, `human-question`, and residual `drained` capacity separate.
+
+```ts
+import { summarizeContinuousWorkerPoolCapacityState } from '@shapeshift-labs/frontier-scheduler';
+
+const state = summarizeContinuousWorkerPoolCapacityState({
+  desiredConcurrency: 8,
+  activeCount: 2,
+  queuedCount: 1,
+  reviewDrainCount: 2,
+  rerunCount: 1,
+  conflictCount: 1,
+  humanQuestionCount: 1
+});
+
+// state.occupiedCount === 8
+// state.drainedCount === 0
+// state.isBlocked === true
+```
+
+- `stateCounts` keeps the per-bucket breakdown, including the residual `drained` bucket.
+- `overflowCount` shows how much the named buckets exceed `desiredConcurrency`.
+- `isBlocked` flags conflict or human-question pressure even when there is still spare capacity.
+- `isDrained` stays true only when none of the named buckets occupy the pool.
+
+## Continuous Refill Planning
+
+`createContinuousWorkerPoolRefillPlan()` turns idle slots into a deterministic refill order. It prefers local drain queues first, then implementation backlog, so a parent coordinator can refill from already-draining work before opening fresh speculative work.
+
+```ts
+import { createContinuousWorkerPoolRefillPlan } from '@shapeshift-labs/frontier-scheduler';
+
+const plan = createContinuousWorkerPoolRefillPlan({
+  maxWorkers: 4,
+  activeCount: 1,
+  drainQueues: [
+    { id: 'review-drain', priority: 'high', items: [{ id: 'review-a' }] },
+    { id: 'rerun', priority: 'normal', items: [{ id: 'rerun-a' }] }
+  ],
+  implementationBacklog: [{ id: 'impl-a' }]
+});
+
+// plan.idleSlotCount === 3
+// plan.recommendations.map((entry) => entry.itemId) === ['review-a', 'rerun-a', 'impl-a']
+```
+
+- `drainQueues` keep the queue hierarchy intact, so higher-priority local drain queues fill first.
+- `implementationBacklog` only starts filling after the drain queues have been consumed.
+- `slots` and `recommendations` stay aligned, making it easy to present an idle-slot plan or to execute it directly.
+
+## Adaptive Target Feedback
+
+`summarizeContinuousWorkerPoolTargetFeedback()` turns useful output, CPU pressure, and review debt into a bounded concurrency target. The default band is `5..10`, which keeps the pool from collapsing too far when output is weak and prevents runaway growth when pressure or review debt rises.
+
+```ts
+import { recommendContinuousWorkerPoolTarget } from '@shapeshift-labs/frontier-scheduler';
+
+const target = recommendContinuousWorkerPoolTarget({
+  usefulOutputCount: 16,
+  cpuPressure: 0,
+  reviewDebt: 0
+});
+
+// target === 10
+```
+
+- `usefulOutputCount` raises the target as recent work keeps producing useful output.
+- `cpuPressure` lowers the target when the pool is already under load.
+- `reviewDebt` lowers the target when coordinator review still needs draining.
+- `minTarget` and `maxTarget` let callers keep the same feedback loop while tightening or widening the allowed band.
+
+## Lease-Aware Pool Capacity
+
+`summarizeLeaseAwarePoolCapacity()` is a small pure helper for leased agent pools, review queues, and coordinator dashboards. It distinguishes active leases from stale leases, plus queued work, review/repair/rerun/apply drain pressure, and separate blocked-human reporting.
+
+```ts
+import { summarizeLeaseAwarePoolCapacity } from '@shapeshift-labs/frontier-scheduler';
+
+const capacity = summarizeLeaseAwarePoolCapacity({
+  targetConcurrency: 4,
+  now: 100,
+  heartbeatGraceMs: 25,
+  leases: [
+    { expiresAt: 150 },
+    { expiresAt: 120 },
+    { expiresAt: 80 }
+  ],
+  queuedCount: 2,
+  reviewCount: 1,
+  repairCount: 1,
+  rerunCount: 1,
+  applyCount: 1,
+  blockedHumanCount: 1
+});
+
+// capacity.activeCount === 2
+// capacity.staleLeaseCount === 1
+// capacity.reviewDrainPressure === 4
+// capacity.reservedCount === 5
+// capacity.launchableCount === 0
+// capacity.suggestedRefillCount === 0
+```
+
+- `activeCount` counts leases that have not expired yet, plus any leases still inside the heartbeat grace window.
+- `heartbeatGraceMs` keeps leases in the active bucket for a short lag window when remote heartbeats arrive late.
+- `staleLeaseCount` counts leases whose `expiresAt` is at or before `now - heartbeatGraceMs`.
+- `reviewCount`, `repairCount`, `rerunCount`, and `applyCount` stay separate so coordinators can report each drain bucket independently.
+- `reviewDrainPressure` combines review work, missing-patch repair, reruns, and coordinator apply work into a single drain signal.
+- `reservedCount` adds stale leases to that drain signal so speculative launches keep capacity in reserve.
+- `launchableCount` is the remaining refill budget after reservations.
+- `suggestedRefillCount` is capped by remaining launchable capacity, so review-drain reservations reduce speculative worker launches.
+- `blockedHumanCount` is reported separately and does not reduce launchable capacity.
+
+If you need gate execution split out from speculative backlog, use `summarizeCoordinatorGateRunCapacity()`.
+
+## Coordinator Gate Run Capacity
+
+`summarizeCoordinatorGateRunCapacity()` is a coordinator-focused helper for gate-run pools. It keeps active workers separate from gate execution, apply/repair/rerun drain, speculative backlog, and true human blockers so review/apply work can reserve capacity before new speculative launches start.
+
+```ts
+import { summarizeCoordinatorGateRunCapacity } from '@shapeshift-labs/frontier-scheduler';
+
+const capacity = summarizeCoordinatorGateRunCapacity({
+  targetConcurrency: 10,
+  activeCount: 4,
+  gateRunCount: 2,
+  applyCount: 1,
+  repairCount: 1,
+  rerunCount: 1,
+  speculativeBacklogCount: 6,
+  blockedHumanCount: 2,
+  heartbeatGraceMs: 25,
+  staleLeaseCount: 1
+});
+
+// capacity.activeCount === 4
+// capacity.gateRunCount === 2
+// capacity.gateDrainPressure === 5
+// capacity.reservedCount === 6
+// capacity.launchableCount === 0
+// capacity.suggestedRefillCount === 0
+```
+
+- `gateRunCount`, `applyCount`, `repairCount`, and `rerunCount` stay separate so coordinators can report each drain bucket independently.
+- `gateDrainPressure` combines gate execution, apply work, repair, and reruns into a single reserve signal.
+- `heartbeatGraceMs` keeps remote workers in the active bucket for a short lag window before they become stale.
+- `reservedCount` adds stale leases to that drain signal so speculative launches keep capacity in reserve.
+- `speculativeBacklogCount` is reported separately and only feeds `suggestedRefillCount` after drain reservations are applied.
+- `blockedHumanCount` is reported separately and does not reduce launchable capacity.
+- `suggestedRefillCount` is the refill budget after review/apply drain reservations are satisfied.
 
 ## Model-Aware Pool Capacity
 
@@ -319,6 +477,35 @@ const capacity = summarizeModelAwarePoolCapacity({
 - `backpressureReason` distinguishes `budget-exhausted`, `escalation-budget-exhausted`, `expensive-tier-saturated`, `at-capacity`, and `refill-needed`.
 - `downgradeAdvice` tells coordinators when to shift work to a cheaper tier versus applying backpressure.
 
+`summarizeModelAwarePoolSlotAllocation()` turns that capacity summary into a slot plan. It fills cheaper tiers first and only spends expensive-tier slots when the budget and escalation budget are still healthy.
+
+```ts
+import { summarizeModelAwarePoolSlotAllocation } from '@shapeshift-labs/frontier-scheduler';
+
+const allocation = summarizeModelAwarePoolSlotAllocation({
+  requestedSlots: 4,
+  budgetRemaining: 120,
+  escalationBudgetRemaining: 18,
+  expensiveTierId: 'deep',
+  tiers: [
+    { id: 'fast', desiredConcurrency: 2, activeCount: 1 },
+    { id: 'standard', desiredConcurrency: 3, activeCount: 1 },
+    { id: 'deep', desiredConcurrency: 4, activeCount: 2 }
+  ]
+});
+
+// allocation.allocationByTier.fast === 1
+// allocation.allocationByTier.standard === 2
+// allocation.allocationByTier.deep === 1
+// allocation.expensiveTierAllocatedSlots === 1
+```
+
+- `allocationByTier` gives the requested slot count per tier after budget pressure is applied.
+- `deferredSlots` reports how many requested slots could not be placed.
+- `expensiveTierAllocatedSlots` makes the expensive-tier share explicit for routing dashboards.
+- `backpressureReason` and `downgradeAdvice` are forwarded from the capacity summary so the caller can react consistently.
+- If the expensive tier is absent from the input capacity snapshot, the allocation summary still includes it with zero open and allocated slots so routing dashboards can show the budget boundary explicitly.
+
 ## Features
 
 - deterministic lanes with lane priority, task priority, and stable FIFO ordering within equal priority
@@ -328,7 +515,7 @@ const capacity = summarizeModelAwarePoolCapacity({
 - queued typed tasks with handler-based replay
 - JSON snapshots for pending work and optional history
 - `inspect()` work graphs for lanes, queued tasks, completed records, causes, parent/child work, dependencies, and task keys
-- `metrics()`, `summarizeSchedulerThroughput()`, `summarizeContinuousWorkerPoolCapacity()`, and `summarizeModelAwarePoolCapacity()` for lane throughput, runtime totals, queue pressure, and continuous/model-aware pool capacity dashboards
+- `metrics()`, `summarizeSchedulerThroughput()`, `summarizeContinuousWorkerPoolCapacity()`, `createContinuousWorkerPoolRefillPlan()`, `summarizeContinuousWorkerPoolTargetFeedback()`, `recommendContinuousWorkerPoolTarget()`, `summarizeLeaseAwarePoolCapacity()`, `summarizeCoordinatorGateRunCapacity()`, `summarizeModelAwarePoolCapacity()`, and `summarizeModelAwarePoolSlotAllocation()` for lane throughput, runtime totals, queue pressure, refill planning, adaptive target feedback, and continuous/model-aware pool capacity dashboards
 
 ## Benchmarks
 

@@ -206,6 +206,7 @@ export interface ContinuousWorkerPoolCapacityInput {
   activeCount?: number | null;
   queuedCount?: number | null;
   leaseCount?: number | null;
+  reservedCount?: number | null;
 }
 
 export interface ContinuousWorkerPoolCapacitySummary {
@@ -213,14 +214,201 @@ export interface ContinuousWorkerPoolCapacitySummary {
   activeCount: number;
   queuedCount: number;
   leaseCount: number;
+  reservedCount: number;
   occupiedCount: number;
   availableCount: number;
+  launchableCount: number;
   nextRefillCount: number;
   idleCount: number;
   wasteCount: number;
   backpressureReason: ContinuousWorkerPoolBackpressureReason;
   isIdle: boolean;
   isWaste: boolean;
+}
+
+export type ContinuousWorkerPoolCapacityState =
+  | 'active'
+  | 'queued'
+  | 'review-drain'
+  | 'rerun'
+  | 'conflict'
+  | 'human-question'
+  | 'drained';
+
+export interface ContinuousWorkerPoolCapacityStateInput {
+  desiredConcurrency: number;
+  activeCount?: number | null;
+  queuedCount?: number | null;
+  reviewDrainCount?: number | null;
+  rerunCount?: number | null;
+  conflictCount?: number | null;
+  humanQuestionCount?: number | null;
+}
+
+export interface ContinuousWorkerPoolCapacityStateSummary {
+  kind: 'frontier.scheduler.continuous-pool-capacity-state';
+  version: 1;
+  desiredConcurrency: number;
+  activeCount: number;
+  queuedCount: number;
+  reviewDrainCount: number;
+  rerunCount: number;
+  conflictCount: number;
+  humanQuestionCount: number;
+  drainedCount: number;
+  overflowCount: number;
+  occupiedCount: number;
+  stateCounts: Record<ContinuousWorkerPoolCapacityState, number>;
+  isBlocked: boolean;
+  isDrained: boolean;
+}
+
+export type ContinuousWorkerPoolRefillBucket = 'drain' | 'implementation';
+
+export interface ContinuousWorkerPoolRefillItem {
+  id: string;
+  priority?: FrontierSchedulerPriority;
+  reasons?: readonly string[];
+}
+
+export interface ContinuousWorkerPoolRefillQueue {
+  id: string;
+  priority?: FrontierSchedulerPriority;
+  items: readonly ContinuousWorkerPoolRefillItem[];
+}
+
+export interface ContinuousWorkerPoolRefillPlanInput {
+  maxWorkers?: number | null;
+  activeCount?: number | null;
+  drainQueues?: readonly ContinuousWorkerPoolRefillQueue[];
+  implementationBacklog?: readonly ContinuousWorkerPoolRefillItem[];
+  generatedAt?: number;
+}
+
+export interface ContinuousWorkerPoolRefillSlot {
+  id: string;
+  index: number;
+  state: 'idle' | 'fillable';
+  recommendationId?: string;
+}
+
+export interface ContinuousWorkerPoolRefillRecommendation {
+  id: string;
+  slotId: string;
+  slotIndex: number;
+  queueId?: string;
+  itemId: string;
+  bucket: ContinuousWorkerPoolRefillBucket;
+  priority: number;
+  reasons: string[];
+}
+
+export interface ContinuousWorkerPoolRefillPlan {
+  kind: 'frontier.scheduler.continuous-refill-plan';
+  version: 1;
+  id: string;
+  generatedAt: number;
+  maxWorkers: number;
+  activeCount: number;
+  idleSlotCount: number;
+  drainQueueCount: number;
+  drainItemCount: number;
+  implementationBacklogCount: number;
+  filledSlotCount: number;
+  drainFilledCount: number;
+  implementationFilledCount: number;
+  slots: ContinuousWorkerPoolRefillSlot[];
+  recommendations: ContinuousWorkerPoolRefillRecommendation[];
+}
+
+export interface ContinuousWorkerPoolTargetFeedbackInput {
+  usefulOutputCount?: number | null;
+  cpuPressure?: number | null;
+  reviewDebt?: number | null;
+  minTarget?: number | null;
+  maxTarget?: number | null;
+}
+
+export interface ContinuousWorkerPoolTargetFeedbackSummary {
+  minTarget: number;
+  maxTarget: number;
+  usefulOutputCount: number;
+  cpuPressure: number;
+  reviewDebt: number;
+  usefulOutputScore: number;
+  cpuPressureScore: number;
+  reviewDebtScore: number;
+  targetConcurrency: number;
+}
+
+export interface CoordinatorGateRunCapacityInput {
+  targetConcurrency: number;
+  activeCount?: number | null;
+  gateRunCount?: number | null;
+  applyCount?: number | null;
+  repairCount?: number | null;
+  rerunCount?: number | null;
+  speculativeBacklogCount?: number | null;
+  blockedHumanCount?: number | null;
+  staleLeaseCount?: number | null;
+  heartbeatGraceMs?: number | null;
+  leases?: readonly LeaseAwarePoolLeaseInput[];
+  now?: number;
+}
+
+export interface CoordinatorGateRunCapacitySummary {
+  targetConcurrency: number;
+  activeCount: number;
+  gateRunCount: number;
+  applyCount: number;
+  repairCount: number;
+  rerunCount: number;
+  speculativeBacklogCount: number;
+  blockedHumanCount: number;
+  staleLeaseCount: number;
+  gateDrainPressure: number;
+  reservedCount: number;
+  availableCount: number;
+  launchableCount: number;
+  suggestedRefillCount: number;
+  isIdle: boolean;
+}
+
+export interface LeaseAwarePoolLeaseInput {
+  expiresAt?: number | null;
+}
+
+export interface LeaseAwarePoolCapacityInput {
+  targetConcurrency: number;
+  activeCount?: number | null;
+  queuedCount?: number | null;
+  reviewCount?: number | null;
+  repairCount?: number | null;
+  rerunCount?: number | null;
+  applyCount?: number | null;
+  blockedHumanCount?: number | null;
+  staleLeaseCount?: number | null;
+  heartbeatGraceMs?: number | null;
+  leases?: readonly LeaseAwarePoolLeaseInput[];
+  now?: number;
+}
+
+export interface LeaseAwarePoolCapacitySummary {
+  targetConcurrency: number;
+  activeCount: number;
+  queuedCount: number;
+  reviewCount: number;
+  repairCount: number;
+  rerunCount: number;
+  applyCount: number;
+  blockedHumanCount: number;
+  staleLeaseCount: number;
+  reviewDrainPressure: number;
+  reservedCount: number;
+  availableCount: number;
+  launchableCount: number;
+  suggestedRefillCount: number;
+  isIdle: boolean;
 }
 
 export type ModelAwarePoolBackpressureReason =
@@ -249,6 +437,37 @@ export interface ModelAwarePoolTierCapacitySummary extends ContinuousWorkerPoolC
   openSlots: number;
   saturation: number;
   isExpensiveTier: boolean;
+}
+
+export interface ModelAwarePoolSlotAllocationInput extends ModelAwarePoolCapacityInput {
+  requestedSlots?: number | null;
+}
+
+export interface ModelAwarePoolSlotAllocationTierSummary {
+  id: string;
+  openSlots: number;
+  allocatedSlots: number;
+  deferredSlots: number;
+  isExpensiveTier: boolean;
+}
+
+export interface ModelAwarePoolSlotAllocationSummary {
+  kind: 'frontier.scheduler.model-aware-pool-slot-allocation';
+  requestedSlots: number;
+  allocatedSlots: number;
+  deferredSlots: number;
+  allocationByTier: Record<string, number>;
+  tiers: ModelAwarePoolSlotAllocationTierSummary[];
+  byTier: Record<string, ModelAwarePoolSlotAllocationTierSummary>;
+  budgetRemaining: number;
+  escalationBudgetRemaining: number;
+  budgetExhausted: boolean;
+  escalationBudgetExhausted: boolean;
+  expensiveTierId: string;
+  expensiveTierAllocatedSlots: number;
+  backpressureReason: ModelAwarePoolBackpressureReason;
+  downgradeAdvice: ModelAwarePoolDowngradeAdvice;
+  isBackpressured: boolean;
 }
 
 export interface ModelAwarePoolCapacitySummary {
@@ -408,16 +627,18 @@ export function summarizeContinuousWorkerPoolCapacity(
   const activeCount = readCount(input.activeCount, 0, 'activeCount');
   const queuedCount = readCount(input.queuedCount, 0, 'queuedCount');
   const leaseCount = readCount(input.leaseCount, 0, 'leaseCount');
+  const reservedCount = readCount(input.reservedCount, 0, 'reservedCount');
   const occupiedCount = activeCount + leaseCount;
   const availableCount = Math.max(0, desiredConcurrency - occupiedCount);
+  const launchableCount = Math.max(0, availableCount - reservedCount);
   const wasteCount = Math.max(0, occupiedCount - desiredConcurrency);
-  const nextRefillCount = queuedCount > 0 ? Math.min(availableCount, queuedCount) : 0;
-  const idleCount = queuedCount === 0 ? availableCount : 0;
+  const nextRefillCount = queuedCount > 0 ? Math.min(launchableCount, queuedCount) : 0;
+  const idleCount = queuedCount === 0 ? launchableCount : 0;
   const backpressureReason: ContinuousWorkerPoolBackpressureReason = queuedCount === 0
     ? 'none'
     : wasteCount > 0
       ? 'oversubscribed'
-      : availableCount > 0
+      : launchableCount > 0
         ? 'refill-needed'
         : 'at-capacity';
 
@@ -426,14 +647,258 @@ export function summarizeContinuousWorkerPoolCapacity(
     activeCount,
     queuedCount,
     leaseCount,
+    reservedCount,
     occupiedCount,
     availableCount,
+    launchableCount,
     nextRefillCount,
     idleCount,
     wasteCount,
     backpressureReason,
     isIdle: idleCount > 0,
     isWaste: wasteCount > 0
+  };
+}
+
+export function summarizeContinuousWorkerPoolCapacityState(
+  input: ContinuousWorkerPoolCapacityStateInput
+): ContinuousWorkerPoolCapacityStateSummary {
+  if (input === null || typeof input !== 'object') throw new TypeError('continuous worker pool capacity state input must be an object');
+  const desiredConcurrency = readCount(input.desiredConcurrency, 0, 'desiredConcurrency');
+  const activeCount = readCount(input.activeCount, 0, 'activeCount');
+  const queuedCount = readCount(input.queuedCount, 0, 'queuedCount');
+  const reviewDrainCount = readCount(input.reviewDrainCount, 0, 'reviewDrainCount');
+  const rerunCount = readCount(input.rerunCount, 0, 'rerunCount');
+  const conflictCount = readCount(input.conflictCount, 0, 'conflictCount');
+  const humanQuestionCount = readCount(input.humanQuestionCount, 0, 'humanQuestionCount');
+  const occupiedCount = activeCount + queuedCount + reviewDrainCount + rerunCount + conflictCount + humanQuestionCount;
+  const drainedCount = Math.max(0, desiredConcurrency - occupiedCount);
+  const overflowCount = Math.max(0, occupiedCount - desiredConcurrency);
+  const stateCounts: Record<ContinuousWorkerPoolCapacityState, number> = {
+    active: activeCount,
+    queued: queuedCount,
+    'review-drain': reviewDrainCount,
+    rerun: rerunCount,
+    conflict: conflictCount,
+    'human-question': humanQuestionCount,
+    drained: drainedCount
+  };
+
+  return {
+    kind: 'frontier.scheduler.continuous-pool-capacity-state',
+    version: 1,
+    desiredConcurrency,
+    activeCount,
+    queuedCount,
+    reviewDrainCount,
+    rerunCount,
+    conflictCount,
+    humanQuestionCount,
+    drainedCount,
+    overflowCount,
+    occupiedCount,
+    stateCounts,
+    isBlocked: conflictCount > 0 || humanQuestionCount > 0,
+    isDrained: occupiedCount === 0
+  };
+}
+
+export function createContinuousWorkerPoolRefillPlan(
+  input: ContinuousWorkerPoolRefillPlanInput = {}
+): ContinuousWorkerPoolRefillPlan {
+  if (input === null || typeof input !== 'object') throw new TypeError('continuous worker pool refill plan input must be an object');
+  if (input.drainQueues !== undefined && !Array.isArray(input.drainQueues)) throw new TypeError('continuous worker pool refill drainQueues must be an array');
+  if (input.implementationBacklog !== undefined && !Array.isArray(input.implementationBacklog)) throw new TypeError('continuous worker pool refill implementationBacklog must be an array');
+
+  const generatedAt = readTimeLimit(input.generatedAt, 0, 'generatedAt');
+  const maxWorkers = readCount(input.maxWorkers, 0, 'maxWorkers');
+  const activeCount = readCount(input.activeCount, 0, 'activeCount');
+  const idleSlotCount = Math.max(0, maxWorkers - activeCount);
+  const drainQueues = input.drainQueues ?? [];
+  const implementationBacklog = input.implementationBacklog ?? [];
+  const drainCandidates: ContinuousWorkerPoolRefillCandidate[] = [];
+  const implementationCandidates: ContinuousWorkerPoolRefillCandidate[] = [];
+
+  const sortedDrainQueues = drainQueues.map((queue) => readRefillQueue(queue)).sort(compareRefillQueueOrder);
+  for (const queue of sortedDrainQueues) {
+    const queueCandidates = queue.items.map((item) => createRefillCandidate(item, queue.id, 'drain'));
+    queueCandidates.sort(compareRefillCandidateOrder);
+    drainCandidates.push(...queueCandidates);
+  }
+
+  for (const item of implementationBacklog) {
+    implementationCandidates.push(createRefillCandidate(item, undefined, 'implementation'));
+  }
+  implementationCandidates.sort(compareRefillCandidateOrder);
+
+  const candidates = [...drainCandidates, ...implementationCandidates];
+  const slots: ContinuousWorkerPoolRefillSlot[] = [];
+  const recommendations: ContinuousWorkerPoolRefillRecommendation[] = [];
+  let drainFilledCount = 0;
+  let implementationFilledCount = 0;
+
+  for (let index = 0; index < idleSlotCount; index += 1) {
+    const slotId = `frontier.scheduler.continuous-refill-slot:${generatedAt}:${index}`;
+    const candidate = candidates[index];
+    if (candidate === undefined) {
+      slots.push({ id: slotId, index, state: 'idle' });
+      continue;
+    }
+    const recommendationId = `frontier.scheduler.continuous-refill-recommendation:${generatedAt}:${index}:${candidate.bucket}:${candidate.queueId ?? 'backlog'}:${candidate.item.id}`;
+    slots.push({ id: slotId, index, state: 'fillable', recommendationId });
+    recommendations.push({
+      id: recommendationId,
+      slotId,
+      slotIndex: index,
+      queueId: candidate.queueId,
+      itemId: candidate.item.id,
+      bucket: candidate.bucket,
+      priority: candidate.priority,
+      reasons: candidate.item.reasons?.length ? Array.from(candidate.item.reasons, String) : candidate.bucket === 'drain'
+        ? ['local-drain-before-implementation-backlog']
+        : ['implementation-backlog-after-local-drain']
+    });
+    if (candidate.bucket === 'drain') drainFilledCount++;
+    else implementationFilledCount++;
+  }
+
+  return {
+    kind: 'frontier.scheduler.continuous-refill-plan',
+    version: 1,
+    id: `frontier.scheduler.continuous-refill-plan:${generatedAt}`,
+    generatedAt,
+    maxWorkers,
+    activeCount,
+    idleSlotCount,
+    drainQueueCount: drainQueues.length,
+    drainItemCount: drainCandidates.length,
+    implementationBacklogCount: implementationCandidates.length,
+    filledSlotCount: recommendations.length,
+    drainFilledCount,
+    implementationFilledCount,
+    slots,
+    recommendations
+  };
+}
+
+export function summarizeContinuousWorkerPoolTargetFeedback(
+  input: ContinuousWorkerPoolTargetFeedbackInput
+): ContinuousWorkerPoolTargetFeedbackSummary {
+  if (input === null || typeof input !== 'object') throw new TypeError('continuous worker pool target feedback input must be an object');
+  const minTarget = readCount(input.minTarget, 5, 'minTarget');
+  const maxTarget = readCount(input.maxTarget, 10, 'maxTarget');
+  if (maxTarget < minTarget) throw new RangeError('maxTarget must be greater than or equal to minTarget');
+  const usefulOutputCount = readNonNegativeValue(input.usefulOutputCount, 0, 'usefulOutputCount');
+  const cpuPressure = readNonNegativeValue(input.cpuPressure, 0, 'cpuPressure');
+  const reviewDebt = readNonNegativeValue(input.reviewDebt, 0, 'reviewDebt');
+  const usefulOutputScore = saturatingScore(usefulOutputCount, 4);
+  const cpuPressureScore = clampUnit(cpuPressure);
+  const reviewDebtScore = saturatingScore(reviewDebt, 4);
+  const targetConcurrency = clampRange(
+    Math.round(minTarget + (maxTarget - minTarget) * clampUnit(0.5 + 0.5 * usefulOutputScore - 0.3 * cpuPressureScore - 0.2 * reviewDebtScore)),
+    minTarget,
+    maxTarget
+  );
+
+  return {
+    minTarget,
+    maxTarget,
+    usefulOutputCount,
+    cpuPressure,
+    reviewDebt,
+    usefulOutputScore,
+    cpuPressureScore,
+    reviewDebtScore,
+    targetConcurrency
+  };
+}
+
+export function recommendContinuousWorkerPoolTarget(
+  input: ContinuousWorkerPoolTargetFeedbackInput
+): number {
+  return summarizeContinuousWorkerPoolTargetFeedback(input).targetConcurrency;
+}
+
+export const adjustContinuousWorkerPoolTarget = recommendContinuousWorkerPoolTarget;
+
+export function summarizeCoordinatorGateRunCapacity(
+  input: CoordinatorGateRunCapacityInput
+): CoordinatorGateRunCapacitySummary {
+  if (input === null || typeof input !== 'object') throw new TypeError('coordinator gate run capacity input must be an object');
+  const now = readTimeLimit(input.now, defaultClock(), 'now');
+  const heartbeatGraceMs = readTimeLimit(input.heartbeatGraceMs, 0, 'heartbeatGraceMs');
+  const leaseCounts = summarizeLeaseAwarePoolLeases(input.leases, now, heartbeatGraceMs);
+  const targetConcurrency = readCount(input.targetConcurrency, 0, 'targetConcurrency');
+  const activeCount = readCount(input.activeCount, leaseCounts.activeCount, 'activeCount');
+  const gateRunCount = readCount(input.gateRunCount, 0, 'gateRunCount');
+  const applyCount = readCount(input.applyCount, 0, 'applyCount');
+  const repairCount = readCount(input.repairCount, 0, 'repairCount');
+  const rerunCount = readCount(input.rerunCount, 0, 'rerunCount');
+  const speculativeBacklogCount = readCount(input.speculativeBacklogCount, 0, 'speculativeBacklogCount');
+  const blockedHumanCount = readCount(input.blockedHumanCount, 0, 'blockedHumanCount');
+  const staleLeaseCount = readCount(input.staleLeaseCount, leaseCounts.staleLeaseCount, 'staleLeaseCount');
+  const gateDrainPressure = gateRunCount + applyCount + repairCount + rerunCount;
+  // Drain reservations must consume launch slots before speculative backlog refills start.
+  const reservedCount = gateDrainPressure + staleLeaseCount;
+  const availableCount = Math.max(0, targetConcurrency - activeCount);
+  const launchableCount = Math.max(0, availableCount - reservedCount);
+  const suggestedRefillCount = Math.min(launchableCount, speculativeBacklogCount);
+
+  return {
+    targetConcurrency,
+    activeCount,
+    gateRunCount,
+    applyCount,
+    repairCount,
+    rerunCount,
+    speculativeBacklogCount,
+    blockedHumanCount,
+    staleLeaseCount,
+    gateDrainPressure,
+    reservedCount,
+    availableCount,
+    launchableCount,
+    suggestedRefillCount,
+    isIdle: activeCount === 0 && speculativeBacklogCount === 0 && reservedCount === 0
+  };
+}
+
+export function summarizeLeaseAwarePoolCapacity(
+  input: LeaseAwarePoolCapacityInput
+): LeaseAwarePoolCapacitySummary {
+  if (input === null || typeof input !== 'object') throw new TypeError('lease aware pool capacity input must be an object');
+  const now = readTimeLimit(input.now, defaultClock(), 'now');
+  const heartbeatGraceMs = readTimeLimit(input.heartbeatGraceMs, 0, 'heartbeatGraceMs');
+  const leaseCounts = summarizeLeaseAwarePoolLeases(input.leases, now, heartbeatGraceMs);
+  const gateRunCapacity = summarizeCoordinatorGateRunCapacity({
+    targetConcurrency: readCount(input.targetConcurrency, 0, 'targetConcurrency'),
+    activeCount: readCount(input.activeCount, leaseCounts.activeCount, 'activeCount'),
+    gateRunCount: readCount(input.reviewCount, 0, 'reviewCount'),
+    applyCount: readCount(input.applyCount, 0, 'applyCount'),
+    repairCount: readCount(input.repairCount, 0, 'repairCount'),
+    rerunCount: readCount(input.rerunCount, 0, 'rerunCount'),
+    speculativeBacklogCount: readCount(input.queuedCount, 0, 'queuedCount'),
+    blockedHumanCount: readCount(input.blockedHumanCount, 0, 'blockedHumanCount'),
+    staleLeaseCount: readCount(input.staleLeaseCount, leaseCounts.staleLeaseCount, 'staleLeaseCount'),
+    heartbeatGraceMs
+  });
+
+  return {
+    targetConcurrency: gateRunCapacity.targetConcurrency,
+    activeCount: gateRunCapacity.activeCount,
+    queuedCount: gateRunCapacity.speculativeBacklogCount,
+    reviewCount: gateRunCapacity.gateRunCount,
+    repairCount: gateRunCapacity.repairCount,
+    rerunCount: gateRunCapacity.rerunCount,
+    applyCount: gateRunCapacity.applyCount,
+    blockedHumanCount: gateRunCapacity.blockedHumanCount,
+    staleLeaseCount: gateRunCapacity.staleLeaseCount,
+    reviewDrainPressure: gateRunCapacity.gateDrainPressure,
+    reservedCount: gateRunCapacity.reservedCount,
+    availableCount: gateRunCapacity.availableCount,
+    launchableCount: gateRunCapacity.launchableCount,
+    suggestedRefillCount: gateRunCapacity.suggestedRefillCount,
+    isIdle: gateRunCapacity.isIdle
   };
 }
 
@@ -511,6 +976,84 @@ export function summarizeModelAwarePoolCapacity(
     backpressureReason,
     downgradeAdvice,
     isBackpressured: backpressureReason !== 'none'
+  };
+}
+
+export function summarizeModelAwarePoolSlotAllocation(
+  input: ModelAwarePoolSlotAllocationInput
+): ModelAwarePoolSlotAllocationSummary {
+  if (input === null || typeof input !== 'object') throw new TypeError('model aware pool slot allocation input must be an object');
+  const capacity = summarizeModelAwarePoolCapacity(input);
+  const requestedSlots = readCount(input.requestedSlots, capacity.totalOpenSlots, 'requestedSlots');
+  const allocationByTier: Record<string, number> = {};
+  const allocationTiers: ModelAwarePoolTierCapacitySummary[] = [];
+  const nonExpensiveTiers: ModelAwarePoolTierCapacitySummary[] = [];
+  let expensiveTierSummary: ModelAwarePoolTierCapacitySummary | undefined;
+  let remainingSlots = requestedSlots;
+
+  for (const tier of capacity.tiers) {
+    allocationTiers[allocationTiers.length] = tier;
+    if (tier.id === capacity.expensiveTierId) {
+      expensiveTierSummary = tier;
+    } else {
+      nonExpensiveTiers[nonExpensiveTiers.length] = tier;
+    }
+  }
+
+  if (expensiveTierSummary === undefined) {
+    expensiveTierSummary = summarizeModelAwarePoolTierCapacity({ id: capacity.expensiveTierId, desiredConcurrency: 0 }, capacity.expensiveTierId);
+    allocationTiers[allocationTiers.length] = expensiveTierSummary;
+  }
+
+  const expensiveTierAllowed = !capacity.budgetExhausted
+    && !capacity.escalationBudgetExhausted
+    && capacity.backpressureReason !== 'expensive-tier-saturated';
+
+  for (const tier of nonExpensiveTiers) {
+    const allocatedSlots = Math.min(tier.openSlots, remainingSlots);
+    allocationByTier[tier.id] = allocatedSlots;
+    remainingSlots -= allocatedSlots;
+  }
+
+  if (expensiveTierSummary !== undefined) {
+    const allocatedSlots = expensiveTierAllowed ? Math.min(expensiveTierSummary.openSlots, remainingSlots) : 0;
+    allocationByTier[expensiveTierSummary.id] = allocatedSlots;
+    remainingSlots -= allocatedSlots;
+  }
+
+  const tiers: ModelAwarePoolSlotAllocationTierSummary[] = [];
+  const byTier: Record<string, ModelAwarePoolSlotAllocationTierSummary> = {};
+
+  for (const tier of allocationTiers) {
+    const allocatedSlots = allocationByTier[tier.id] ?? 0;
+    const summary = {
+      id: tier.id,
+      openSlots: tier.openSlots,
+      allocatedSlots,
+      deferredSlots: Math.max(0, tier.openSlots - allocatedSlots),
+      isExpensiveTier: tier.isExpensiveTier
+    };
+    tiers[tiers.length] = summary;
+    byTier[summary.id] = summary;
+  }
+
+  return {
+    kind: 'frontier.scheduler.model-aware-pool-slot-allocation',
+    requestedSlots,
+    allocatedSlots: requestedSlots - remainingSlots,
+    deferredSlots: remainingSlots,
+    allocationByTier,
+    tiers,
+    byTier,
+    budgetRemaining: capacity.budgetRemaining,
+    escalationBudgetRemaining: capacity.escalationBudgetRemaining,
+    budgetExhausted: capacity.budgetExhausted,
+    escalationBudgetExhausted: capacity.escalationBudgetExhausted,
+    expensiveTierId: capacity.expensiveTierId,
+    expensiveTierAllocatedSlots: allocationByTier[capacity.expensiveTierId] ?? 0,
+    backpressureReason: capacity.backpressureReason,
+    downgradeAdvice: capacity.downgradeAdvice,
+    isBackpressured: capacity.isBackpressured
   };
 }
 
@@ -1217,6 +1760,56 @@ function summarizeModelAwarePoolTierCapacity(
   };
 }
 
+interface ContinuousWorkerPoolRefillCandidate {
+  item: ContinuousWorkerPoolRefillItem;
+  bucket: ContinuousWorkerPoolRefillBucket;
+  queueId?: string;
+  priority: number;
+}
+
+function readRefillQueue(input: ContinuousWorkerPoolRefillQueue): ContinuousWorkerPoolRefillQueue {
+  if (input === null || typeof input !== 'object') throw new TypeError('continuous worker pool refill queue must be an object');
+  if (!Array.isArray(input.items)) throw new TypeError('continuous worker pool refill queue items must be an array');
+  return {
+    id: normalizeId(input.id, 'continuous worker pool refill queue id'),
+    priority: input.priority,
+    items: input.items.map((item) => readRefillItem(item))
+  };
+}
+
+function readRefillItem(input: ContinuousWorkerPoolRefillItem): ContinuousWorkerPoolRefillItem {
+  if (input === null || typeof input !== 'object') throw new TypeError('continuous worker pool refill item must be an object');
+  return {
+    id: normalizeId(input.id, 'continuous worker pool refill item id'),
+    priority: input.priority,
+    ...(input.reasons === undefined ? {} : { reasons: Array.from(input.reasons, String) })
+  };
+}
+
+function createRefillCandidate(
+  input: ContinuousWorkerPoolRefillItem,
+  queueId: string | undefined,
+  bucket: ContinuousWorkerPoolRefillBucket
+): ContinuousWorkerPoolRefillCandidate {
+  const item = readRefillItem(input);
+  return {
+    item,
+    queueId,
+    bucket,
+    priority: readPriority(item.priority)
+  };
+}
+
+function compareRefillCandidateOrder(left: ContinuousWorkerPoolRefillCandidate, right: ContinuousWorkerPoolRefillCandidate): number {
+  return right.priority - left.priority
+    || left.item.id.localeCompare(right.item.id);
+}
+
+function compareRefillQueueOrder(left: ContinuousWorkerPoolRefillQueue, right: ContinuousWorkerPoolRefillQueue): number {
+  return readPriority(right.priority) - readPriority(left.priority)
+    || left.id.localeCompare(right.id);
+}
+
 function readThroughputLane(
   input: string | FrontierSchedulerLaneSnapshot | FrontierSchedulerThroughputLaneOptions
 ): FrontierSchedulerThroughputLaneOptions {
@@ -1278,6 +1871,25 @@ function applyThroughputCounts(
   for (const id of Object.keys(counts)) {
     ensureThroughputLane(lanes, normalizeId(id, label + ' lane'))[field] += readNonNegativeLimit(counts[id], 0, label + '.' + id);
   }
+}
+
+function summarizeLeaseAwarePoolLeases(
+  leases: readonly LeaseAwarePoolLeaseInput[] | undefined,
+  now: number,
+  heartbeatGraceMs: number
+): { activeCount: number; staleLeaseCount: number } {
+  let activeCount = 0;
+  let staleLeaseCount = 0;
+  const graceMs = readTimeLimit(heartbeatGraceMs, 0, 'heartbeatGraceMs');
+  for (const lease of leases ?? []) {
+    if (lease === null || typeof lease !== 'object') throw new TypeError('lease aware pool lease must be an object');
+    const expiresAt = lease.expiresAt === undefined || lease.expiresAt === null
+      ? undefined
+      : readTimeLimit(lease.expiresAt, 0, 'lease.expiresAt');
+    if (expiresAt !== undefined && expiresAt + graceMs <= now) staleLeaseCount++;
+    else activeCount++;
+  }
+  return { activeCount, staleLeaseCount };
 }
 
 function readRecordRuntimeMs(record: FrontierSchedulerThroughputRecord, now: number | undefined): number {
@@ -1372,6 +1984,13 @@ function readCount(value: number | null | undefined, fallback: number, label: st
   return Math.floor(value);
 }
 
+function readNonNegativeValue(value: number | null | undefined, fallback: number, label: string): number {
+  if (value === undefined || value === null) return fallback;
+  if (value === Infinity) return Infinity;
+  if (!Number.isFinite(value) || value < 0) throw new RangeError(label + ' must be a non-negative number');
+  return value;
+}
+
 function readNonNegativeLimit(value: number | null | undefined, fallback: number, label: string): number {
   if (value === undefined || value === null) return fallback;
   if (value === Infinity) return Infinity;
@@ -1383,6 +2002,24 @@ function readTimeLimit(value: number | null | undefined, fallback: number, label
   if (value === undefined || value === null) return fallback;
   if (value === Infinity) return Infinity;
   if (!Number.isFinite(value) || value < 0) throw new RangeError(label + ' must be a non-negative number');
+  return value;
+}
+
+function saturatingScore(value: number, scale: number): number {
+  if (!Number.isFinite(value)) return 1;
+  if (value <= 0) return 0;
+  return value / (value + scale);
+}
+
+function clampUnit(value: number): number {
+  if (value <= 0) return 0;
+  if (value >= 1) return 1;
+  return value;
+}
+
+function clampRange(value: number, min: number, max: number): number {
+  if (value <= min) return min;
+  if (value >= max) return max;
   return value;
 }
 
