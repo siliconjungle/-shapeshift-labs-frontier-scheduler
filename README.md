@@ -31,7 +31,10 @@ The published Frontier package family is generated from one shared package catal
 - [`@shapeshift-labs/frontier-schema`](https://www.npmjs.com/package/@shapeshift-labs/frontier-schema): JSON Schema validation, Frontier profile generation, CloudEvent envelopes, and query/table schema helpers.
 - [`@shapeshift-labs/frontier-migrations`](https://www.npmjs.com/package/@shapeshift-labs/frontier-migrations): Boundary-first data migrations, import normalization, plugin/API version mapping, versioned envelopes, graph diagnostics, patch path rewrites, dry-run reports, and current-shape rehydration.
 - [`@shapeshift-labs/frontier-event-log`](https://www.npmjs.com/package/@shapeshift-labs/frontier-event-log): Bounded event logs, replay cursors, consumer acknowledgements, keyed compaction, checkpoints, and Frontier patch event records.
+- [`@shapeshift-labs/frontier-run`](https://www.npmjs.com/package/@shapeshift-labs/frontier-run): Append-only distributed run graphs, causal event DAGs, evidence nodes, lanes, leases, refs, segments, dashboard projections, and admission decision records for Frontier agent work.
+- [`@shapeshift-labs/frontier-lease`](https://www.npmjs.com/package/@shapeshift-labs/frontier-lease): Runtime-neutral semantic, file, package, and repository lease claims with fencing tokens, expiry, conflict checks, apply validation, and replayable evidence for Frontier collaboration.
 - [`@shapeshift-labs/frontier-inspect`](https://www.npmjs.com/package/@shapeshift-labs/frontier-inspect): Cross-package inspection/evidence bundles, registry graph snapshots, feature/resource impact reports, timeline/event normalization, redaction, JSONL import/export, and AI-readable app feature maps.
+- [`@shapeshift-labs/frontier-runtime-proof`](https://www.npmjs.com/package/@shapeshift-labs/frontier-runtime-proof): Runtime-neutral proof capsules, source-bound runtime telemetry, and admission evidence helpers for Frontier merge and review workflows.
 - [`@shapeshift-labs/frontier-logging`](https://www.npmjs.com/package/@shapeshift-labs/frontier-logging): Opt-in structured logging, browser telemetry, scheduled sinks, file sinks, exporters, benchmark traces, and Frontier patch/update summaries.
 - [`@shapeshift-labs/frontier-mutation`](https://www.npmjs.com/package/@shapeshift-labs/frontier-mutation): Explicit mutation and selector plans compiled to Frontier patches or CRDT operations.
 - [`@shapeshift-labs/frontier-effects`](https://www.npmjs.com/package/@shapeshift-labs/frontier-effects): Serializable effect descriptors and resource graphs for Frontier apps, including fetch, storage, timers, navigation, workers, clipboard, broadcast, WebSocket, stream, policy metadata, runtime records, redaction, JSONL, proof helpers, and registry graph output.
@@ -45,16 +48,20 @@ The published Frontier package family is generated from one shared package catal
 - [`@shapeshift-labs/frontier-worker`](https://www.npmjs.com/package/@shapeshift-labs/frontier-worker): Serializable worker and edge task descriptors for Frontier apps, including queues, idempotency keys, retry and timeout policy, declared reads/writes/effects, snapshots, patch outputs, produced assets, execution records, logs, trace links, proof hashes, dedupe indexes, and registry graph output.
 - [`@shapeshift-labs/frontier-queue`](https://www.npmjs.com/package/@shapeshift-labs/frontier-queue): Serializable durable queue state, leases, retries, dedupe keys, patch-carrying jobs, dead-letter records, replay evidence, and queue inspection for Frontier apps.
 - [`@shapeshift-labs/frontier-swarm`](https://www.npmjs.com/package/@shapeshift-labs/frontier-swarm): Hierarchical swarm plans, lanes, compute profiles, ownership policy, semantic ownership regions, task queues, event streams, run records, merge bundles, merge indexes, queue overlays, merge admission, coordinator dashboards, changed-path checks, and proof artifacts for Frontier agent work.
-- [`@shapeshift-labs/frontier-swarm-codex`](https://www.npmjs.com/package/@shapeshift-labs/frontier-swarm-codex): Node Codex CLI adapter for Frontier swarm plans, including prompt rendering, worktree and snapshot workspaces, Codex argument compatibility, browser resource allocation, JSONL capture, verification commands, pid-backed stop, collect/apply workflows, merge indexes, queue overlays, merge bundles, normalized job evidence, coordinator query artifacts, and result artifacts.
+- [`@shapeshift-labs/frontier-swarm-git`](https://www.npmjs.com/package/@shapeshift-labs/frontier-swarm-git): Node Git, workspace, patch, changed-path, write-fence, package-link repair, patch check, HEAD read, blob hash, and apply-ledger adapter for Frontier swarm runners.
+- [`@shapeshift-labs/frontier-swarm-codex`](https://www.npmjs.com/package/@shapeshift-labs/frontier-swarm-codex): Node Codex CLI adapter for Frontier swarm plans, including prompt rendering, worktree and snapshot workspaces, Codex argument compatibility, browser resource allocation, JSONL capture, verification commands, pid-backed stop, collect/apply workflows, merge indexes, queue overlays, merge bundles, normalized job evidence, coordinator query artifacts, result artifacts, and run-log sync adapters.
+- [`@shapeshift-labs/frontier-loom-ui`](https://www.npmjs.com/package/@shapeshift-labs/frontier-loom-ui): Read-only Loom and Frontier operator dashboard for workspace-lifetime progress, active agents, queue state, evidence/admission status, run events, run-log sync projections, semantic leases, gate executions, git apply/workspace evidence, and coordinator steering intent files.
 - [`@shapeshift-labs/frontier-lang-kernel`](https://www.npmjs.com/package/@shapeshift-labs/frontier-lang-kernel): Runtime-neutral semantic source graph, type/lattice/extern declarations, patch bundles, replay, hashing, evidence records, and merge-admission kernel for Frontier Lang.
 - [`@shapeshift-labs/frontier-lang-parser`](https://www.npmjs.com/package/@shapeshift-labs/frontier-lang-parser): Dependency-light Frontier Lang parser for modules, entities, state, actions, effects, types, externs, targets, and lattice declarations.
 - [`@shapeshift-labs/frontier-lang-checker`](https://www.npmjs.com/package/@shapeshift-labs/frontier-lang-checker): Checker and diagnostics for Frontier Lang semantic documents, including type symbols, effects, regions, lattice laws, CRDT metadata, and patch evidence.
 - [`@shapeshift-labs/frontier-lang-typescript`](https://www.npmjs.com/package/@shapeshift-labs/frontier-lang-typescript): TypeScript projection adapter for Frontier Lang semantic documents, including type/entity/state/action/extern declarations and CRDT lattice descriptors.
 - [`@shapeshift-labs/frontier-lang-javascript`](https://www.npmjs.com/package/@shapeshift-labs/frontier-lang-javascript): JavaScript projection adapter for Frontier Lang semantic documents, including ESM action stubs and schema/lattice descriptors.
+- [`@shapeshift-labs/frontier-lang-html`](https://www.npmjs.com/package/@shapeshift-labs/frontier-lang-html): HTML semantic merge evidence and projection adapter for Frontier Lang semantic documents, including element tree identity, attributes, text/comment spans, source maps, and fail-closed browser/runtime proof gaps.
+- [`@shapeshift-labs/frontier-lang-css`](https://www.npmjs.com/package/@shapeshift-labs/frontier-lang-css): CSS semantic merge evidence and projection adapter for Frontier Lang semantic documents, including selector specificity, declaration/cascade keys, custom properties, `@property` and `@page` descriptor evidence, CSS Modules/ICSS export and composition evidence, source maps, and fail-closed browser cascade/render proof gaps.
 - [`@shapeshift-labs/frontier-lang-rust`](https://www.npmjs.com/package/@shapeshift-labs/frontier-lang-rust): Rust projection adapter for Frontier Lang semantic documents, including structs, aliases, and action stubs.
 - [`@shapeshift-labs/frontier-lang-python`](https://www.npmjs.com/package/@shapeshift-labs/frontier-lang-python): Python projection adapter for Frontier Lang semantic documents, including dataclasses, typed patch records, and action stubs.
 - [`@shapeshift-labs/frontier-lang-c`](https://www.npmjs.com/package/@shapeshift-labs/frontier-lang-c): C header projection adapter for Frontier Lang semantic documents, including structs and action prototypes.
-- [`@shapeshift-labs/frontier-lang-compiler`](https://www.npmjs.com/package/@shapeshift-labs/frontier-lang-compiler): Compiler facade for Frontier Lang source documents, including parse, check, hash, diagnostics, universal AST envelopes, proof/paradigm semantic summaries, projection to TypeScript, JavaScript, Rust, Python, and C, and native source-import adapters for semantic merge evidence.
+- [`@shapeshift-labs/frontier-lang-compiler`](https://www.npmjs.com/package/@shapeshift-labs/frontier-lang-compiler): Compiler facade for Frontier Lang source documents, including parse, check, hash, diagnostics, universal AST envelopes, proof/paradigm semantic summaries, projection to TypeScript, JavaScript, HTML, CSS, Rust, Python, and C, and native source-import adapters for semantic merge evidence.
 - [`@shapeshift-labs/frontier-lang-swift`](https://www.npmjs.com/package/@shapeshift-labs/frontier-lang-swift): Swift source-language importer package for Frontier Lang semantic documents, including package-level metadata, SwiftSyntax adapter helpers, native import results, and semantic sidecar generation for SwiftSyntax/SwiftParser-shaped syntax trees.
 - [`@shapeshift-labs/frontier-lang-kotlin`](https://www.npmjs.com/package/@shapeshift-labs/frontier-lang-kotlin): Kotlin PSI source-language importer package for Frontier Lang semantic documents, including package-level metadata, Kotlin PSI adapter helpers, native import results, and semantic sidecar generation for Kotlin PSI/KtFile-shaped syntax trees.
 - [`@shapeshift-labs/frontier-lang-java`](https://www.npmjs.com/package/@shapeshift-labs/frontier-lang-java): Java source-language importer package for Frontier Lang semantic documents, including package-level metadata, Java AST adapter helpers, native import results, and semantic sidecar generation for javac/JDT/JavaParser-shaped ASTs.
@@ -62,7 +69,7 @@ The published Frontier package family is generated from one shared package catal
 - [`@shapeshift-labs/frontier-lang-csharp`](https://www.npmjs.com/package/@shapeshift-labs/frontier-lang-csharp): C# Roslyn source-language importer package for Frontier Lang semantic documents, including package-level metadata, Roslyn adapter helpers, native import results, and semantic sidecar generation for SyntaxTree/SyntaxNode-shaped ASTs.
 - [`@shapeshift-labs/frontier-lang-clang`](https://www.npmjs.com/package/@shapeshift-labs/frontier-lang-clang): Clang AST source-language importer package for Frontier Lang semantic documents, including package-level metadata, Clang AST JSON adapter helpers, native import results, and semantic sidecar generation for C/C++ translation units.
 - [`@shapeshift-labs/frontier-lang-cli`](https://www.npmjs.com/package/@shapeshift-labs/frontier-lang-cli): Command line interface for parsing, checking, hashing, emitting, native source import/projection, semantic slicing, and corpus roundtrip evidence for Frontier Lang projects.
-- [`@shapeshift-labs/frontier-lang`](https://www.npmjs.com/package/@shapeshift-labs/frontier-lang): Umbrella package for Frontier Lang kernel, parser, checker, compiler facade, universal AST helpers, projection adapters, and source-language importer adapters.
+- [`@shapeshift-labs/frontier-lang`](https://www.npmjs.com/package/@shapeshift-labs/frontier-lang): Umbrella package for Frontier Lang kernel, parser, checker, compiler facade, universal AST helpers, projection adapters, HTML/CSS semantic merge evidence adapters, and source-language importer adapters.
 - [`@shapeshift-labs/frontier-kv`](https://www.npmjs.com/package/@shapeshift-labs/frontier-kv): Serializable in-memory key/value state for Frontier apps, including TTL, versioned compare-and-set, batched patch mutations, scans, watchers, snapshots, JSONL event evidence, and replay verification.
 - [`@shapeshift-labs/frontier-kv-locks`](https://www.npmjs.com/package/@shapeshift-labs/frontier-kv-locks): Lease-style lock records on top of Frontier KV, including acquire, renew, release, fencing tokens, expiration, owner evidence, and replayable lock events.
 - [`@shapeshift-labs/frontier-kv-rate-limit`](https://www.npmjs.com/package/@shapeshift-labs/frontier-kv-rate-limit): Patch-native rate limit buckets for Frontier KV, including fixed windows, sliding windows, token buckets, deterministic refill, consume evidence, and reset records.
@@ -107,7 +114,7 @@ The published Frontier package family is generated from one shared package catal
 - [`@shapeshift-labs/frontier-realtime-server`](https://www.npmjs.com/package/@shapeshift-labs/frontier-realtime-server): Authoritative realtime room, tick, command validation, rate-limit, session, and snapshot-history runtime.
 - [`@shapeshift-labs/frontier-realtime-websocket`](https://www.npmjs.com/package/@shapeshift-labs/frontier-realtime-websocket): WebSocket client, wire, and Node room-server transport for Frontier realtime.
 - [`@shapeshift-labs/frontier-game`](https://www.npmjs.com/package/@shapeshift-labs/frontier-game): Game-facing entity, component, player, room, ownership, spatial interest, rollback, physics, and replication helpers above realtime.
-- [`@shapeshift-labs/loom`](https://www.npmjs.com/package/@shapeshift-labs/loom): Repo-level semantic collaboration CLI for .loom workspaces, including init, scan, status, graph snapshots, projection plans, Frontier Lang delegation, Frontier Swarm delegation, and Frontier Framework delegation.
+- [`@shapeshift-labs/loom`](https://www.npmjs.com/package/@shapeshift-labs/loom): Repo-level semantic collaboration CLI for .loom workspaces, including init, scan, status, graph snapshots, projection plans, Frontier Lang delegation, Frontier Swarm delegation, run-log sync command delegation, and Frontier Framework delegation.
 
 Package source repositories:
 
@@ -124,7 +131,10 @@ Package source repositories:
 - [`siliconjungle/-shapeshift-labs-frontier-schema`](https://github.com/siliconjungle/-shapeshift-labs-frontier-schema)
 - [`siliconjungle/-shapeshift-labs-frontier-migrations`](https://github.com/siliconjungle/-shapeshift-labs-frontier-migrations)
 - [`siliconjungle/-shapeshift-labs-frontier-event-log`](https://github.com/siliconjungle/-shapeshift-labs-frontier-event-log)
+- [`siliconjungle/-shapeshift-labs-frontier-run`](https://github.com/siliconjungle/-shapeshift-labs-frontier-run)
+- [`siliconjungle/-shapeshift-labs-frontier-lease`](https://github.com/siliconjungle/-shapeshift-labs-frontier-lease)
 - [`siliconjungle/-shapeshift-labs-frontier-inspect`](https://github.com/siliconjungle/-shapeshift-labs-frontier-inspect)
+- [`siliconjungle/-shapeshift-labs-frontier-runtime-proof`](https://github.com/siliconjungle/-shapeshift-labs-frontier-runtime-proof)
 - [`siliconjungle/-shapeshift-labs-frontier-scheduler`](https://github.com/siliconjungle/-shapeshift-labs-frontier-scheduler)
 - [`siliconjungle/-shapeshift-labs-frontier-logging`](https://github.com/siliconjungle/-shapeshift-labs-frontier-logging)
 - [`siliconjungle/-shapeshift-labs-frontier-mutation`](https://github.com/siliconjungle/-shapeshift-labs-frontier-mutation)
@@ -139,12 +149,16 @@ Package source repositories:
 - [`siliconjungle/-shapeshift-labs-frontier-worker`](https://github.com/siliconjungle/-shapeshift-labs-frontier-worker)
 - [`siliconjungle/-shapeshift-labs-frontier-queue`](https://github.com/siliconjungle/-shapeshift-labs-frontier-queue)
 - [`siliconjungle/-shapeshift-labs-frontier-swarm`](https://github.com/siliconjungle/-shapeshift-labs-frontier-swarm)
+- [`siliconjungle/-shapeshift-labs-frontier-swarm-git`](https://github.com/siliconjungle/-shapeshift-labs-frontier-swarm-git)
 - [`siliconjungle/-shapeshift-labs-frontier-swarm-codex`](https://github.com/siliconjungle/-shapeshift-labs-frontier-swarm-codex)
+- [`siliconjungle/frontier-loom-ui`](https://github.com/siliconjungle/frontier-loom-ui)
 - [`siliconjungle/-shapeshift-labs-frontier-lang-kernel`](https://github.com/siliconjungle/-shapeshift-labs-frontier-lang-kernel)
 - [`siliconjungle/-shapeshift-labs-frontier-lang-parser`](https://github.com/siliconjungle/-shapeshift-labs-frontier-lang-parser)
 - [`siliconjungle/-shapeshift-labs-frontier-lang-checker`](https://github.com/siliconjungle/-shapeshift-labs-frontier-lang-checker)
 - [`siliconjungle/-shapeshift-labs-frontier-lang-typescript`](https://github.com/siliconjungle/-shapeshift-labs-frontier-lang-typescript)
 - [`siliconjungle/-shapeshift-labs-frontier-lang-javascript`](https://github.com/siliconjungle/-shapeshift-labs-frontier-lang-javascript)
+- [`siliconjungle/-shapeshift-labs-frontier-lang-html`](https://github.com/siliconjungle/-shapeshift-labs-frontier-lang-html)
+- [`siliconjungle/-shapeshift-labs-frontier-lang-css`](https://github.com/siliconjungle/-shapeshift-labs-frontier-lang-css)
 - [`siliconjungle/-shapeshift-labs-frontier-lang-rust`](https://github.com/siliconjungle/-shapeshift-labs-frontier-lang-rust)
 - [`siliconjungle/-shapeshift-labs-frontier-lang-python`](https://github.com/siliconjungle/-shapeshift-labs-frontier-lang-python)
 - [`siliconjungle/-shapeshift-labs-frontier-lang-c`](https://github.com/siliconjungle/-shapeshift-labs-frontier-lang-c)
@@ -236,300 +250,11 @@ scheduler.schedule({
 const result = scheduler.run({ maxUnits: 16 });
 const graph = scheduler.inspect();
 const replay = scheduler.serialize();
-const metrics = scheduler.metrics();
 ```
 
 `serialize()` stores the deterministic pending queue and recent records. `deserializeSchedulerState(snapshot, { handlers })` recreates queued work when each task has a serializable `type` and a registered handler.
 
 Renderers, mutation registries, virtual layout, persistence, logging, and game loops can consume this scheduler structurally. They do not need to import this package unless they want the default implementation.
-
-## Swarm Dashboard Metrics
-
-`scheduler.metrics()` summarizes each lane from scheduler history plus the live queue. Each lane reports active, queued, completed, failed, cancelled, and dropped counts, total runtime milliseconds, completed/failed runtime totals, total units, configured `maxQueued`, and a numeric pressure value. Bounded lanes use `queued / maxQueued`; unbounded lanes use `queued / max(1, active)`.
-
-Agent runners that already have structural task records can use the pure helper without owning a scheduler instance:
-
-```ts
-import { summarizeSchedulerThroughput } from '@shapeshift-labs/frontier-scheduler';
-
-const dashboard = summarizeSchedulerThroughput(records, {
-  now: performance.now(),
-  lanes: [
-    { id: 'research', maxQueued: 16 },
-    { id: 'implementation', maxQueued: 8 }
-  ],
-  activeByLane: { implementation: 4 },
-  queuedByLane: { implementation: 7 }
-});
-```
-
-Swarm coordinators can scale lanes with sustained pressure near or above `1`, rising failed or dropped counts, or high queued counts. Healthy lanes should show completed work, low or zero queue pressure, and stable failed/runtime totals.
-
-## Continuous Pool Capacity
-
-`summarizeContinuousWorkerPoolCapacity()` is a smaller pure helper for continuous worker pools, agent runners, and other lease-backed executors. It answers a different question than throughput metrics: "how many workers should I refill next, and is the pool wasting or idling capacity?"
-
-```ts
-import { summarizeContinuousWorkerPoolCapacity } from '@shapeshift-labs/frontier-scheduler';
-
-const capacity = summarizeContinuousWorkerPoolCapacity({
-  desiredConcurrency: 8,
-  activeCount: 5,
-  leaseCount: 1,
-  queuedCount: 12,
-  reservedCount: 1
-});
-
-// capacity.launchableCount === 1
-// capacity.nextRefillCount === 1
-// capacity.backpressureReason === 'refill-needed'
-```
-
-- `availableCount` reports raw headroom before reservations.
-- `reservedCount` lets callers keep launch capacity available for review drain, reruns, or other non-speculative work.
-- `launchableCount` is the refill budget after reservations are applied.
-- `nextRefillCount` tells you how many workers to start from that launchable budget while queued work exists.
-- `backpressureReason` distinguishes between `refill-needed`, `at-capacity`, and `oversubscribed`.
-- `isIdle` flags spare pool capacity when no work is queued and no launch reservation is pending.
-- `isWaste` flags over-lease or over-active capacity above the desired concurrency.
-
-This keeps a continuous agent pool full when there is work, but avoids starting extra workers when the queue is empty or the pool is already saturated.
-
-## Continuous Pool Capacity State
-
-`summarizeContinuousWorkerPoolCapacityState()` is the more explicit helper when you need to show where a pool is currently occupied instead of only whether it can refill. It keeps `active`, `queued`, `review-drain`, `rerun`, `conflict`, `human-question`, and residual `drained` capacity separate.
-
-```ts
-import { summarizeContinuousWorkerPoolCapacityState } from '@shapeshift-labs/frontier-scheduler';
-
-const state = summarizeContinuousWorkerPoolCapacityState({
-  desiredConcurrency: 8,
-  activeCount: 2,
-  queuedCount: 1,
-  reviewDrainCount: 2,
-  rerunCount: 1,
-  conflictCount: 1,
-  humanQuestionCount: 1
-});
-
-// state.occupiedCount === 8
-// state.drainedCount === 0
-// state.isBlocked === true
-```
-
-- `stateCounts` keeps the per-bucket breakdown, including the residual `drained` bucket.
-- `overflowCount` shows how much the named buckets exceed `desiredConcurrency`.
-- `isBlocked` flags conflict or human-question pressure even when there is still spare capacity.
-- `isDrained` stays true only when none of the named buckets occupy the pool.
-
-## Continuous Refill Planning
-
-`createContinuousWorkerPoolRefillPlan()` turns idle slots into a deterministic refill order. It prefers local drain queues first, then implementation backlog, so a parent coordinator can refill from already-draining work before opening fresh speculative work.
-
-```ts
-import { createContinuousWorkerPoolRefillPlan } from '@shapeshift-labs/frontier-scheduler';
-
-const plan = createContinuousWorkerPoolRefillPlan({
-  maxWorkers: 4,
-  activeCount: 1,
-  drainQueues: [
-    { id: 'review-drain', priority: 'high', items: [{ id: 'review-a' }] },
-    { id: 'rerun', priority: 'normal', items: [{ id: 'rerun-a' }] }
-  ],
-  implementationBacklog: [{ id: 'impl-a' }]
-});
-
-// plan.idleSlotCount === 3
-// plan.recommendations.map((entry) => entry.itemId) === ['review-a', 'rerun-a', 'impl-a']
-```
-
-- `drainQueues` keep the queue hierarchy intact, so higher-priority local drain queues fill first.
-- `implementationBacklog` only starts filling after the drain queues have been consumed.
-- `slots` and `recommendations` stay aligned, making it easy to present an idle-slot plan or to execute it directly.
-
-## Adaptive Target Feedback
-
-`summarizeContinuousWorkerPoolTargetFeedback()` turns useful output, CPU pressure, and review debt into a bounded concurrency target. The default band is `5..10`, which keeps the pool from collapsing too far when output is weak and prevents runaway growth when pressure or review debt rises.
-
-```ts
-import { recommendContinuousWorkerPoolTarget } from '@shapeshift-labs/frontier-scheduler';
-
-const target = recommendContinuousWorkerPoolTarget({
-  usefulOutputCount: 16,
-  cpuPressure: 0,
-  reviewDebt: 0
-});
-
-// target === 10
-```
-
-- `usefulOutputCount` raises the target as recent work keeps producing useful output.
-- `cpuPressure` lowers the target when the pool is already under load.
-- `reviewDebt` lowers the target when coordinator review still needs draining.
-- `minTarget` and `maxTarget` let callers keep the same feedback loop while tightening or widening the allowed band.
-
-## Lease-Aware Pool Capacity
-
-`summarizeLeaseAwarePoolCapacity()` is a small pure helper for leased agent pools, review queues, and coordinator dashboards. It distinguishes active leases from stale leases, plus queued work, review/repair/rerun/apply drain pressure, and separate blocked-human reporting.
-
-```ts
-import { summarizeLeaseAwarePoolCapacity } from '@shapeshift-labs/frontier-scheduler';
-
-const capacity = summarizeLeaseAwarePoolCapacity({
-  targetConcurrency: 4,
-  now: 100,
-  heartbeatGraceMs: 25,
-  leases: [
-    { expiresAt: 150 },
-    { expiresAt: 120 },
-    { expiresAt: 80 }
-  ],
-  queuedCount: 2,
-  reviewCount: 1,
-  repairCount: 1,
-  rerunCount: 1,
-  applyCount: 1,
-  blockedHumanCount: 1
-});
-
-// capacity.activeCount === 2
-// capacity.staleLeaseCount === 1
-// capacity.reviewDrainPressure === 4
-// capacity.reservedCount === 5
-// capacity.launchableCount === 0
-// capacity.suggestedRefillCount === 0
-```
-
-- `activeCount` counts leases that have not expired yet, plus any leases still inside the heartbeat grace window.
-- `heartbeatGraceMs` keeps leases in the active bucket for a short lag window when remote heartbeats arrive late.
-- `staleLeaseCount` counts leases whose `expiresAt` is at or before `now - heartbeatGraceMs`.
-- `reviewCount`, `repairCount`, `rerunCount`, and `applyCount` stay separate so coordinators can report each drain bucket independently.
-- `reviewDrainPressure` combines review work, missing-patch repair, reruns, and coordinator apply work into a single drain signal.
-- `reservedCount` adds stale leases to that drain signal so speculative launches keep capacity in reserve.
-- `launchableCount` is the remaining refill budget after reservations.
-- `suggestedRefillCount` is capped by remaining launchable capacity, so review-drain reservations reduce speculative worker launches.
-- `blockedHumanCount` is reported separately and does not reduce launchable capacity.
-
-If you need gate execution split out from speculative backlog, use `summarizeCoordinatorGateRunCapacity()`.
-
-## Local Queue Concurrency Caps
-
-`summarizeLocalQueueConcurrencyCaps()` is a pure helper for local merge queues and coordinator dashboards. It treats each semantic scope as having one apply leader slot, so a busy scope keeps its own overflow queued while unrelated scopes still get a launch opportunity.
-
-```ts
-import { summarizeLocalQueueConcurrencyCaps } from '@shapeshift-labs/frontier-scheduler';
-
-const caps = summarizeLocalQueueConcurrencyCaps({
-  scopes: [
-    { id: 'scope:a', activeCount: 1, queuedCount: 3 },
-    { id: 'scope:b', activeCount: 0, queuedCount: 2 }
-  ]
-});
-
-// caps.launchableCount === 1
-// caps.byScope['scope:b'].launchableCount === 1
-// caps.byScope['scope:a'].blockedCount === 3
-```
-
-- `activeCount` counts the currently running local leaders for that scope.
-- `queuedCount` counts the same-scope work waiting behind the leader cap.
-- `launchableCount` is `1` when a scope has queued work but no active leader, so a different semantic scope can still progress.
-- `blockedCount` reports same-scope overflow that must remain queued locally.
-- `oversubscribedScopeCount` highlights scopes that already have more than one active leader and should be tightened up.
-
-## Coordinator Gate Run Capacity
-
-`summarizeCoordinatorGateRunCapacity()` is a coordinator-focused helper for gate-run pools. It keeps active workers separate from gate execution, apply/repair/rerun drain, speculative backlog, and true human blockers so review/apply work can reserve capacity before new speculative launches start.
-
-```ts
-import { summarizeCoordinatorGateRunCapacity } from '@shapeshift-labs/frontier-scheduler';
-
-const capacity = summarizeCoordinatorGateRunCapacity({
-  targetConcurrency: 10,
-  activeCount: 4,
-  gateRunCount: 2,
-  applyCount: 1,
-  repairCount: 1,
-  rerunCount: 1,
-  speculativeBacklogCount: 6,
-  blockedHumanCount: 2,
-  heartbeatGraceMs: 25,
-  staleLeaseCount: 1
-});
-
-// capacity.activeCount === 4
-// capacity.gateRunCount === 2
-// capacity.gateDrainPressure === 5
-// capacity.reservedCount === 6
-// capacity.launchableCount === 0
-// capacity.suggestedRefillCount === 0
-```
-
-- `gateRunCount`, `applyCount`, `repairCount`, and `rerunCount` stay separate so coordinators can report each drain bucket independently.
-- `gateDrainPressure` combines gate execution, apply work, repair, and reruns into a single reserve signal.
-- `heartbeatGraceMs` keeps remote workers in the active bucket for a short lag window before they become stale.
-- `reservedCount` adds stale leases to that drain signal so speculative launches keep capacity in reserve.
-- `speculativeBacklogCount` is reported separately and only feeds `suggestedRefillCount` after drain reservations are applied.
-- `blockedHumanCount` is reported separately and does not reduce launchable capacity.
-- `suggestedRefillCount` is the refill budget after review/apply drain reservations are satisfied.
-
-## Model-Aware Pool Capacity
-
-`summarizeModelAwarePoolCapacity()` extends the same capacity math to model-aware pools with multiple tiers such as `fast`, `standard`, and `deep`. It reports per-tier open slots, the remaining model budget, remaining escalation budget, expensive-tier saturation, and whether the scheduler should backpressure or downgrade to a cheaper tier.
-
-```ts
-import { summarizeModelAwarePoolCapacity } from '@shapeshift-labs/frontier-scheduler';
-
-const capacity = summarizeModelAwarePoolCapacity({
-  budgetRemaining: 120,
-  escalationBudgetRemaining: 18,
-  expensiveTierId: 'deep',
-  tiers: [
-    { id: 'fast', desiredConcurrency: 4, activeCount: 2, leaseCount: 1, queuedCount: 6 },
-    { id: 'standard', desiredConcurrency: 3, activeCount: 3, queuedCount: 1 },
-    { id: 'deep', desiredConcurrency: 2, activeCount: 2, queuedCount: 2 }
-  ]
-});
-
-// capacity.openSlotsByTier.fast === 1
-// capacity.expensiveTierSaturation === 2
-// capacity.downgradeAdvice === 'downgrade'
-```
-
-- `openSlotsByTier` shows spare concurrency for each tier in the pool.
-- `budgetRemaining` and `escalationBudgetRemaining` let coordinators stop expensive routing before the pool overspends.
-- `expensiveTierSaturation` highlights how full the costly tier is, including queued work.
-- `backpressureReason` distinguishes `budget-exhausted`, `escalation-budget-exhausted`, `expensive-tier-saturated`, `at-capacity`, and `refill-needed`.
-- `downgradeAdvice` tells coordinators when to shift work to a cheaper tier versus applying backpressure.
-
-`summarizeModelAwarePoolSlotAllocation()` turns that capacity summary into a slot plan. When any tier is under pressure, it ranks non-expensive tiers by saturation so the most pressed capacity fills first, then only spends expensive-tier slots when the budget and escalation budget are still healthy.
-
-```ts
-import { summarizeModelAwarePoolSlotAllocation } from '@shapeshift-labs/frontier-scheduler';
-
-const allocation = summarizeModelAwarePoolSlotAllocation({
-  requestedSlots: 4,
-  budgetRemaining: 120,
-  escalationBudgetRemaining: 18,
-  expensiveTierId: 'deep',
-  tiers: [
-    { id: 'fast', desiredConcurrency: 2, activeCount: 1 },
-    { id: 'standard', desiredConcurrency: 3, activeCount: 1 },
-    { id: 'deep', desiredConcurrency: 4, activeCount: 2 }
-  ]
-});
-
-// allocation.allocationByTier.fast === 1
-// allocation.allocationByTier.standard === 2
-// allocation.allocationByTier.deep === 1
-// allocation.expensiveTierAllocatedSlots === 1
-```
-
-- `allocationByTier` gives the requested slot count per tier after budget pressure is applied.
-- `deferredSlots` reports how many requested slots could not be placed.
-- `expensiveTierAllocatedSlots` makes the expensive-tier share explicit for routing dashboards.
-- `backpressureReason` and `downgradeAdvice` are forwarded from the capacity summary so the caller can react consistently.
-- If the expensive tier is absent from the input capacity snapshot, the allocation summary still includes it with zero open and allocated slots so routing dashboards can show the budget boundary explicitly.
 
 ## Features
 
@@ -540,7 +265,6 @@ const allocation = summarizeModelAwarePoolSlotAllocation({
 - queued typed tasks with handler-based replay
 - JSON snapshots for pending work and optional history
 - `inspect()` work graphs for lanes, queued tasks, completed records, causes, parent/child work, dependencies, and task keys
-- `metrics()`, `summarizeSchedulerThroughput()`, `summarizeContinuousWorkerPoolCapacity()`, `createContinuousWorkerPoolRefillPlan()`, `summarizeContinuousWorkerPoolTargetFeedback()`, `recommendContinuousWorkerPoolTarget()`, `summarizeLocalQueueConcurrencyCaps()`, `summarizeLeaseAwarePoolCapacity()`, `summarizeCoordinatorGateRunCapacity()`, `summarizeModelAwarePoolCapacity()`, and `summarizeModelAwarePoolSlotAllocation()` for lane throughput, runtime totals, queue pressure, refill planning, local leader caps, adaptive target feedback, and continuous/model-aware pool capacity dashboards
 
 ## Benchmarks
 
